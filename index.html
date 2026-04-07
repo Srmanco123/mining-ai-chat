@@ -3,39 +3,159 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Asistente Minero</title>
+<title>MATSA | Asistente Minero IA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.0/papaparse.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Segoe UI, sans-serif; background: #1a1a2e; color: #eee; height: 100vh; display: flex; flex-direction: column; padding: 12px; gap: 8px; }
-  h3 { color: #f5a623; font-size: 15px; }
-  #header { display: flex; align-items: center; justify-content: space-between; }
-  #estado { font-size: 12px; color: #aaa; background: #0f3460; padding: 6px 12px; border-radius: 8px; }
-  #btn-cargar { padding: 8px 16px; background: #0f3460; color: #f5a623; border: 1px solid #f5a623; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: bold; }
-  #btn-cargar:hover { background: #f5a623; color: #1a1a2e; }
-  #chat { flex: 1; overflow-y: auto; background: #16213e; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-  .msg { padding: 8px 12px; border-radius: 8px; max-width: 92%; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
-  .user { background: #0f3460; align-self: flex-end; }
-  .ai { background: #1f4068; align-self: flex-start; }
-  .typing { color: #aaa; font-style: italic; }
-  .chart-container { background: #16213e; border-radius: 8px; padding: 10px; margin-top: 6px; max-width: 92%; }
-  .input-row { display: flex; gap: 8px; }
-  #input { flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid #0f3460; background: #16213e; color: #eee; font-size: 13px; }
-  #input:focus { outline: none; border-color: #f5a623; }
-  button.send { padding: 8px 16px; background: #f5a623; color: #1a1a2e; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 13px; }
-  button.send:hover { background: #e8961a; }
-  button.send:disabled { background: #555; cursor: not-allowed; }
-  #btn-resumen { width: 100%; background: #e84545; color: white; border: none; border-radius: 8px; padding: 10px; font-size: 13px; font-weight: bold; cursor: pointer; }
-  #btn-resumen:hover { background: #c73535; }
-  #btn-resumen:disabled { background: #555; cursor: not-allowed; }
+  body { font-family: Segoe UI, sans-serif; background: #f4f4f4; color: #1a1a1a; height: 100vh; display: flex; flex-direction: column; }
+
+  /* HEADER */
+  #header {
+    background: #2C1810;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  #header-left { display: flex; align-items: center; gap: 12px; }
+  #logo-box {
+    background: #E8401C;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+    padding: 6px 10px;
+    border-radius: 4px;
+  }
+  #header-title { color: white; font-size: 15px; font-weight: 600; }
+  #header-subtitle { color: #aaa; font-size: 11px; }
+  #estado {
+    font-size: 11px;
+    color: #ccc;
+    background: rgba(255,255,255,0.1);
+    padding: 5px 10px;
+    border-radius: 4px;
+  }
+  #btn-cargar {
+    padding: 7px 14px;
+    background: #E8401C;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  #btn-cargar:hover { background: #c93516; }
+
+  /* RESUMEN */
+  #btn-resumen {
+    width: 100%;
+    background: #E8401C;
+    color: white;
+    border: none;
+    padding: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  #btn-resumen:hover { background: #c93516; }
+  #btn-resumen:disabled { background: #ccc; cursor: not-allowed; color: #888; }
+
+  /* CHAT */
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: #f4f4f4;
+  }
+  .msg {
+    padding: 10px 14px;
+    border-radius: 6px;
+    max-width: 88%;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .user {
+    background: #E8401C;
+    color: white;
+    align-self: flex-end;
+    border-radius: 6px 6px 0 6px;
+  }
+  .ai {
+    background: white;
+    color: #1a1a1a;
+    align-self: flex-start;
+    border-left: 3px solid #E8401C;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: 0 6px 6px 6px;
+  }
+  .typing { color: #999; font-style: italic; background: white; }
+
+  /* GRAFICAS */
+  .chart-wrapper {
+    align-self: flex-start;
+    width: 88%;
+    background: white;
+    border-radius: 6px;
+    border-left: 3px solid #E8401C;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    padding: 10px;
+  }
+  .chart-wrapper canvas { max-height: 220px; }
+
+  /* INPUT */
+  #input-area {
+    background: white;
+    border-top: 2px solid #E8401C;
+    padding: 10px 16px;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  #input {
+    flex: 1;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    font-size: 13px;
+    color: #1a1a1a;
+    background: #f9f9f9;
+  }
+  #input:focus { outline: none; border-color: #E8401C; background: white; }
+  #input:disabled { background: #eee; }
+  button.send {
+    padding: 8px 18px;
+    background: #2C1810;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  button.send:hover { background: #E8401C; }
+  button.send:disabled { background: #ccc; cursor: not-allowed; }
+
   #file-input { display: none; }
 </style>
 </head>
 <body>
 
 <div id="header">
-  <h3>⛏️ Asistente Minero IA</h3>
+  <div id="header-left">
+    <div id="logo-box">SF</div>
+    <div>
+      <div id="header-title">Sandfire MATSA · Asistente Minero IA</div>
+      <div id="header-subtitle">Reconciliación de Cámaras — Análisis inteligente</div>
+    </div>
+  </div>
   <div style="display:flex;gap:8px;align-items:center">
     <div id="estado">Sin datos cargados</div>
     <button id="btn-cargar" onclick="document.getElementById('file-input').click()">📂 Cargar datos</button>
@@ -43,12 +163,12 @@
   </div>
 </div>
 
-<button id="btn-resumen" onclick="solicitarResumen()" disabled>📊 Generar resumen automático</button>
+<button id="btn-resumen" onclick="solicitarResumen()" disabled>📊 Generar resumen ejecutivo</button>
 
 <div id="chat"></div>
 
-<div class="input-row">
-  <input id="input" type="text" placeholder="Pregunta por una cámara, zona, estadística..." onkeydown="if(event.key==='Enter') enviar()" disabled/>
+<div id="input-area">
+  <input id="input" type="text" placeholder="Pregunta por una cámara, zona, estadística o pide una gráfica..." onkeydown="if(event.key==='Enter') enviar()" disabled/>
   <button class="send" id="send-btn" onclick="enviar()" disabled>Enviar</button>
 </div>
 
@@ -58,19 +178,16 @@
   let historial = [];
   let contextoBase = "";
 
-  // Leer contexto de URL (Power BI)
   function leerContextoURL() {
     try {
       const search = window.location.search;
       const ctxIndex = search.indexOf("ctx=");
       if (ctxIndex !== -1) {
-        const ctxEncoded = search.substring(ctxIndex + 4);
-        contextoBase = decodeURIComponent(ctxEncoded.replace(/\+/g, " "));
+        contextoBase = decodeURIComponent(search.substring(ctxIndex + 4).replace(/\+/g, " "));
       }
     } catch(e) {}
   }
 
-  // Cargar CSV
   function cargarCSV(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -82,20 +199,20 @@
         const n = datos.length;
         const minas = [...new Set(datos.map(d => d.Mine || d.Mina || ""))].filter(Boolean).join(", ");
         const zonas = [...new Set(datos.map(d => d.Zone || d.Zona || ""))].filter(Boolean).length;
-        document.getElementById("estado").innerText = `✅ ${n} cámaras | ${minas} | ${zonas} zonas`;
+        document.getElementById("estado").innerText = `✅ ${n} cámaras · ${minas} · ${zonas} zonas`;
         document.getElementById("btn-resumen").disabled = false;
         document.getElementById("input").disabled = false;
         document.getElementById("send-btn").disabled = false;
-        addMsg(`Datos cargados: ${n} cámaras de ${minas}. Puedes preguntar por cámaras concretas, zonas, estadísticas o pedir gráficas.`, "ai");
+        addMsg(`Datos cargados correctamente: ${n} cámaras de ${minas} en ${zonas} zonas.\n\nPuedes preguntar por cámaras concretas, comparar zonas, pedir estadísticas o solicitar gráficas.`, "ai");
       }
     });
   }
 
   function buildContexto() {
     if (datos.length === 0) return contextoBase || "Sin datos cargados.";
-    const resumen = `Dataset: ${datos.length} camaras. Campos disponibles: ${Object.keys(datos[0]).join(", ")}. `;
+    const resumen = `Dataset: ${datos.length} camaras. Campos: ${Object.keys(datos[0]).join(", ")}. `;
     const muestra = JSON.stringify(datos.slice(0, 200));
-    const resto = datos.length > 200 ? ` [Mostrando 200 de ${datos.length} registros]` : "";
+    const resto = datos.length > 200 ? ` [Primeros 200 de ${datos.length} registros mostrados]` : "";
     return resumen + "Datos: " + muestra + resto;
   }
 
@@ -111,12 +228,30 @@
 
   function renderGrafica(spec) {
     try {
-      const container = document.createElement("div");
-      container.className = "chart-container";
+      // Aplicar colores Sandfire
+      if (spec.data && spec.data.datasets) {
+        const colors = ["#E8401C","#2C1810","#f5a623","#7a7a7a","#c93516"];
+        spec.data.datasets.forEach((ds, i) => {
+          if (!ds.backgroundColor || ds.backgroundColor === "...") {
+            ds.backgroundColor = spec.type === "line" ? colors[i % colors.length] : 
+              spec.data.labels.map((_, j) => colors[j % colors.length]);
+          }
+          if (spec.type === "line") ds.borderColor = colors[i % colors.length];
+        });
+      }
+      if (!spec.options) spec.options = {};
+      if (!spec.options.plugins) spec.options.plugins = {};
+      spec.options.plugins.legend = { labels: { font: { family: "Segoe UI", size: 11 } } };
+      if (spec.options.plugins.title) {
+        spec.options.plugins.title.font = { family: "Segoe UI", size: 13, weight: "bold" };
+        spec.options.plugins.title.color = "#2C1810";
+      }
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "chart-wrapper";
       const canvas = document.createElement("canvas");
-      canvas.height = 300;
-      container.appendChild(canvas);
-      document.getElementById("chat").appendChild(container);
+      wrapper.appendChild(canvas);
+      document.getElementById("chat").appendChild(wrapper);
       new Chart(canvas, spec);
       document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
     } catch(e) {
@@ -129,28 +264,24 @@
     const resumenBtn = document.getElementById("btn-resumen");
     sendBtn.disabled = true;
     resumenBtn.disabled = true;
-
     const typing = addMsg("Analizando...", "ai typing");
 
-   const systemPrompt = `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas. 
-Responde siempre en español técnico para ingenieros senior.
-Tienes acceso al dataset completo de cámaras.
+    const systemPrompt = `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas de Sandfire MATSA.
+Responde siempre en español técnico para ingenieros senior de minería.
 
-REGLAS DE CALCULO OBLIGATORIAS - aplica siempre estas formulas sobre los datos brutos:
-- Dilución = MIN(1, MAX(0, Sobrexcavacion_tn / PVt)) — nunca uses la columna Dilution directamente
-- Recuperación = MIN(1, MAX(0, 1 - Subexcavacion_tn / PVt)) — nunca uses la columna Recovery directamente
-- Cuando agregues por zona o mina usa siempre la suma de Sobrexcavacion_tn / suma de PVt (ponderado por volumen)
-- Los valores de dilución y recuperación siempre entre 0 y 1 (0% y 100%)
+REGLAS DE CALCULO OBLIGATORIAS:
+- Dilución = MIN(1, MAX(0, Sobrexcavacion_tn / PVt)) — recalcula siempre desde datos brutos
+- Recuperación = MIN(1, MAX(0, 1 - Subexcavacion_tn / PVt)) — recalcula siempre desde datos brutos  
+- Al agregar por zona o mina usa suma(Sobrexcavacion_tn) / suma(PVt) ponderado por volumen
+- Valores siempre entre 0 y 1
 
-Contexto Power BI: ${contextoBase}
-Dataset: ${buildContexto()}
+Contexto Power BI activo: ${contextoBase}
+${buildContexto()}
 
-IMPORTANTE - Si el usuario pide una gráfica, además del análisis textual devuelve un bloque JSON con este formato exacto al final de tu respuesta:
+Si el usuario pide una gráfica, devuelve análisis textual Y al final un bloque con este formato exacto:
 CHART_JSON_START
-{"type":"bar","data":{"labels":[...],"datasets":[{"label":"...","data":[...],"backgroundColor":"..."}]},"options":{"responsive":true,"plugins":{"title":{"display":true,"text":"..."}}}}
-CHART_JSON_END
-
-Tipos disponibles: bar, line, scatter, pie, doughnut.`;
+{"type":"bar","data":{"labels":[...],"datasets":[{"label":"...","data":[...],"backgroundColor":"#E8401C"}]},"options":{"responsive":true,"plugins":{"title":{"display":true,"text":"..."}}}}
+CHART_JSON_END`;
 
     try {
       const response = await fetch(PROXY_URL, {
@@ -173,7 +304,6 @@ Tipos disponibles: bar, line, scatter, pie, doughnut.`;
       const data = await response.json();
       let respuesta = data.content?.[0]?.text || "No se pudo obtener respuesta.";
 
-      // Extraer gráfica si existe
       const chartMatch = respuesta.match(/CHART_JSON_START\s*([\s\S]*?)\s*CHART_JSON_END/);
       if (chartMatch) {
         const chartSpec = JSON.parse(chartMatch[1]);
@@ -187,7 +317,7 @@ Tipos disponibles: bar, line, scatter, pie, doughnut.`;
       }
 
       historial.push({p: prompt, r: respuesta});
-      if (historial.length > 5) historial.shift();
+      if (historial.length > 6) historial.shift();
 
     } catch(e) {
       typing.remove();
@@ -208,8 +338,8 @@ Tipos disponibles: bar, line, scatter, pie, doughnut.`;
   }
 
   function solicitarResumen() {
-    const prompt = "Genera un resumen ejecutivo completo del dataset. Incluye: estadísticas de dilución y recuperación por zona y mina, cámaras con peores y mejores resultados, patrones relevantes y recomendaciones técnicas para la toma de decisiones.";
-    addMsg("📊 Resumen automático solicitado", "user");
+    const prompt = "Genera un resumen ejecutivo completo del dataset. Incluye: estadísticas de dilución y recuperación por zona y mina recalculadas desde datos brutos, cámaras con peores y mejores resultados, patrones relevantes y recomendaciones técnicas concretas para la toma de decisiones operacionales.";
+    addMsg("📊 Resumen ejecutivo solicitado", "user");
     llamarClaude(prompt);
   }
 
