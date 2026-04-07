@@ -43,14 +43,19 @@
   let historial = [];
 
   // Leer contexto de la URL
-  function leerContexto() {
-    const params = new URLSearchParams(window.location.search);
-    const ctx = params.get("ctx");
-    if (ctx) {
-      contexto = decodeURIComponent(ctx);
-      document.getElementById("contexto-box").innerText = "📊 " + contexto;
-    } else {
-      document.getElementById("contexto-box").innerText = "Sin contexto recibido desde Power BI.";
+ function leerContexto() {
+    try {
+      const search = window.location.search;
+      const ctxIndex = search.indexOf("ctx=");
+      if (ctxIndex !== -1) {
+        const ctxEncoded = search.substring(ctxIndex + 4);
+        contexto = decodeURIComponent(ctxEncoded.replace(/\+/g, " "));
+        document.getElementById("contexto-box").innerText = "📊 " + contexto;
+      } else {
+        document.getElementById("contexto-box").innerText = "Sin contexto recibido desde Power BI.";
+      }
+    } catch(e) {
+      document.getElementById("contexto-box").innerText = "Error al leer contexto: " + e.message;
     }
   }
 
