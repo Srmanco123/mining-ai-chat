@@ -132,9 +132,16 @@
 
     const typing = addMsg("Analizando...", "ai typing");
 
-    const systemPrompt = `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas. 
+   const systemPrompt = `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas. 
 Responde siempre en español técnico para ingenieros senior.
 Tienes acceso al dataset completo de cámaras.
+
+REGLAS DE CALCULO OBLIGATORIAS - aplica siempre estas formulas sobre los datos brutos:
+- Dilución = MIN(1, MAX(0, Sobrexcavacion_tn / PVt)) — nunca uses la columna Dilution directamente
+- Recuperación = MIN(1, MAX(0, 1 - Subexcavacion_tn / PVt)) — nunca uses la columna Recovery directamente
+- Cuando agregues por zona o mina usa siempre la suma de Sobrexcavacion_tn / suma de PVt (ponderado por volumen)
+- Los valores de dilución y recuperación siempre entre 0 y 1 (0% y 100%)
+
 Contexto Power BI: ${contextoBase}
 Dataset: ${buildContexto()}
 
