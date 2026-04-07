@@ -36,14 +36,13 @@
 </div>
 
 <script>
-  const API_KEY = "AIzaSyDKyePsonwI2GMjsq2JwACFr69opqI0_yQ";
-  const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + API_KEY;
+  const API_KEY = "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";
+  const API_URL = "https://api.anthropic.com/v1/messages";
 
   let contexto = "Sin contexto disponible.";
   let historial = [];
 
-  // Leer contexto de la URL
- function leerContexto() {
+  function leerContexto() {
     try {
       const search = window.location.search;
       const ctxIndex = search.indexOf("ctx=");
@@ -55,7 +54,9 @@
         document.getElementById("contexto-box").innerText = "Sin contexto recibido desde Power BI.";
       }
     } catch(e) {
-      document.getElementById("contexto-box").innerText = "Error al leer contexto: " + e.message;
+      document.getElementById("contexto-box").innerText = "Contexto recibido (sin decodificar).";
+      const raw = window.location.search.split("ctx=")[1] || "";
+      contexto = raw;
     }
   }
 
@@ -69,7 +70,7 @@
     return div;
   }
 
-  async function llamarGemini(prompt) {
+  async function llamarClaude(prompt) {
     const sendBtn = document.getElementById("send-btn");
     const resumenBtn = document.getElementById("resumen-btn");
     sendBtn.disabled = true;
@@ -77,31 +78,41 @@
 
     const typing = addMsg("Analizando...", "ai typing");
 
-    const systemPrompt = `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas.
-Responde siempre en español, de forma técnica y concisa.
-Contexto actual de los datos filtrados en Power BI: ${contexto}
-Historial reciente: ${JSON.stringify(historial)}`;
+    const systemPrompt = `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas. Responde siempre en español, de forma técnica y concisa. Contexto actual de los datos filtrados en Power BI: ${contexto}`;
 
     try {
       const response = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-allow-browser": "true"
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: systemPrompt + "\n\nPregunta: " + prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 600 }
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 600,
+          system: systemPrompt,
+          messages: [
+            ...historial.map(h => ([
+              {role: "user", content: h.p},
+              {role: "assistant", content: h.r}
+            ])).flat(),
+            {role: "user", content: prompt}
+          ]
         })
       });
 
       const data = await response.json();
-      const respuesta = data.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo obtener respuesta.";
+      const respuesta = data.content?.[0]?.text || "No se pudo obtener respuesta.";
       typing.remove();
       addMsg(respuesta, "ai");
-      historial.push({ p: prompt, r: respuesta });
+      historial.push({p: prompt, r: respuesta});
       if (historial.length > 5) historial.shift();
 
     } catch(e) {
       typing.remove();
-      addMsg("Error de conexión. Verifica tu red.", "ai");
+      addMsg("Error de conexión: " + e.message, "ai");
     }
 
     sendBtn.disabled = false;
@@ -114,13 +125,13 @@ Historial reciente: ${JSON.stringify(historial)}`;
     if (!texto) return;
     addMsg(texto, "user");
     input.value = "";
-    llamarGemini(texto);
+    llamarClaude(texto);
   }
 
   function solicitarResumen() {
     const prompt = "Genera un resumen ejecutivo de los datos actuales. Incluye: estado general de dilución y recuperación, si los valores son buenos o preocupantes según los percentiles, y recomendaciones para la toma de decisiones.";
     addMsg("📊 Resumen automático solicitado", "user");
-    llamarGemini(prompt);
+    llamarClaude(prompt);
   }
 
   leerContexto();
