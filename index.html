@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Asistente Minero</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Segoe UI, sans-serif; background: #1a1a2e; color: #eee; height: 100vh; display: flex; flex-direction: column; padding: 12px; }
+  h3 { color: #f5a623; margin-bottom: 8px; font-size: 15px; }
+  #contexto-box { background: #0f3460; border-radius: 8px; padding: 10px; font-size: 12px; color: #aaa; margin-bottom: 8px; line-height: 1.6; }
+  #chat { flex: 1; overflow-y: auto; background: #16213e; border-radius: 8px; padding: 10px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { padding: 8px 12px; border-radius: 8px; max-width: 90%; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+  .user { background: #0f3460; align-self: flex-end; }
+  .ai { background: #1f4068; align-self: flex-start; }
+  .typing { color: #aaa; font-style: italic; }
+  .input-row { display: flex; gap: 8px; }
+  #input { flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid #0f3460; background: #16213e; color: #eee; font-size: 13px; }
+  #input:focus { outline: none; border-color: #f5a623; }
+  button { padding: 8px 16px; background: #f5a623; color: #1a1a2e; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 13px; }
+  button:hover { background: #e8961a; }
+  button:disabled { background: #555; cursor: not-allowed; }
+  #resumen-btn { width: 100%; margin-bottom: 8px; background: #e84545; color: white; font-size: 13px; padding: 10px; }
+  #resumen-btn:hover { background: #c73535; }
+</style>
+</head>
+<body>
+
+<h3>🤖 Asistente de análisis minero</h3>
+<div id="contexto-box">Cargando contexto...</div>
+<button id="resumen-btn" onclick="solicitarResumen()">📊 Generar resumen automático</button>
+<div id="chat"></div>
+<div class="input-row">
+  <input id="input" type="text" placeholder="Pregunta sobre los datos filtrados..." onkeydown="if(event.key==='Enter') enviar()"/>
+  <button id="send-btn" onclick="enviar()">Enviar</button>
+</div>
+
+<script>
+  const API_KEY = "AIzaSyAuBSYtsSgiC8aT8pPjo6bG4F0LrJ5ABsU";
+  const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + API_KEY;
+
+  let contexto = "Sin contexto disponible.";
+  let historial = [];
+
+  // Leer contexto de la URL
+  function leerContexto() {
+    const params = new URLSearchParams(window.location.search);
+    const ctx = params.get("ctx");
+    if (ctx) {
+      contexto = decodeURIComponent(ctx);
+      document.getElementById("contexto-box").innerText = "📊 " + contexto;
+    } else {
+      document.getElementById("contexto-box").innerText = "Sin contexto recibido desde Power BI.";
+    }
+  }
+
+  function addMsg(texto, tipo) {
+    const chat = document.getElementById("chat");
+    const div = document.createElement("div");
+    div.className = "msg " + tipo;
+    div.innerText = texto;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div;
+  }
+
+  async function llamarGemini(prompt) {
+    const sendBtn = document.getElementById("send-btn");
+    const resumenBtn = document.getElementById("resumen-btn");
+    sendBtn.disabled = true;
+    resumenBtn.disabled = true;
+
+    const typing = addMsg("Analizando...", "ai typing");
+
+    const systemPrompt = `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas.
+Responde siempre en español, de forma técnica y concisa.
+Contexto actual de los datos filtrados en Power BI: ${contexto}
+Historial reciente: ${JSON.stringify(historial)}`;
+
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: systemPrompt + "\n\nPregunta: " + prompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 600 }
+        })
+      });
+
+      const data = await response.json();
+      const respuesta = data.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo obtener respuesta.";
+      typing.remove();
+      addMsg(respuesta, "ai");
+      historial.push({ p: prompt, r: respuesta });
+      if (historial.length > 5) historial.shift();
+
+    } catch(e) {
+      typing.remove();
+      addMsg("Error de conexión. Verifica tu red.", "ai");
+    }
+
+    sendBtn.disabled = false;
+    resumenBtn.disabled = false;
+  }
+
+  function enviar() {
+    const input = document.getElementById("input");
+    const texto = input.value.trim();
+    if (!texto) return;
+    addMsg(texto, "user");
+    input.value = "";
+    llamarGemini(texto);
+  }
+
+  function solicitarResumen() {
+    const prompt = "Genera un resumen ejecutivo de los datos actuales. Incluye: estado general de dilución y recuperación, si los valores son buenos o preocupantes según los percentiles, y recomendaciones para la toma de decisiones.";
+    addMsg("📊 Resumen automático solicitado", "user");
+    llamarGemini(prompt);
+  }
+
+  leerContexto();
+</script>
+</body>
+</html>
