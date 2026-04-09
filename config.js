@@ -2,7 +2,7 @@ const CONFIG = {
   // API
   PROXY_URL: "https://anthropic-proxy.manurv2.workers.dev",
   MODEL: "claude-haiku-4-5-20251001",
-  MAX_TOKENS: 1500,
+  MAX_TOKENS: 4000,
 
   // Empresa
   EMPRESA: "Sandfire MATSA",
