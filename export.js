@@ -1,6 +1,6 @@
 const ExportManager = {
 
-  async exportarPDF() {
+ async exportarPDF() {
     const { jsPDF } = window.jspdf;
     const chat = document.getElementById("chat");
     const btn = document.getElementById("btn-exportar");
@@ -11,14 +11,25 @@ const ExportManager = {
     }
 
     try {
-      // Capturar chat completo
+      // Guardar altura original y expandir para captura completa
+      const alturaOriginal = chat.style.height;
+      const overflowOriginal = chat.style.overflow;
+      chat.style.height = chat.scrollHeight + "px";
+      chat.style.overflow = "visible";
+
       const canvas = await html2canvas(chat, {
-        scale: 2,
+        scale: 1.5,
         backgroundColor: "#f4f4f4",
         useCORS: true,
         logging: false,
-        allowTaint: false
+        allowTaint: false,
+        scrollY: 0,
+        windowHeight: chat.scrollHeight
       });
+
+      // Restaurar altura original
+      chat.style.height = alturaOriginal;
+      chat.style.overflow = overflowOriginal;
 
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
