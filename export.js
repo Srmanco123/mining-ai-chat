@@ -1,6 +1,6 @@
 const ExportManager = {
 
- async exportarPDF() {
+  async exportarPDF() {
     const { jsPDF } = window.jspdf;
     const chat = document.getElementById("chat");
     const btn = document.getElementById("btn-exportar");
@@ -11,25 +11,37 @@ const ExportManager = {
     }
 
     try {
-      // Guardar altura original y expandir para captura completa
-      const alturaOriginal = chat.style.height;
-      const overflowOriginal = chat.style.overflow;
-      chat.style.height = chat.scrollHeight + "px";
-      chat.style.overflow = "visible";
+      // Filtrar últimos 6 elementos (3 preguntas + 3 respuestas)
+      const todosLosMsgs = Array.from(chat.children);
+      const ultimos = todosLosMsgs.slice(-6);
 
-      const canvas = await html2canvas(chat, {
+      // Crear div temporal fuera del viewport
+      const chatTemp = document.createElement("div");
+      chatTemp.style.cssText = `
+        position: fixed;
+        top: -9999px;
+        left: 0;
+        width: ${chat.offsetWidth}px;
+        background: #f4f4f4;
+        padding: 12px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-family: Segoe UI, sans-serif;
+        font-size: 13px;
+      `;
+      ultimos.forEach(el => chatTemp.appendChild(el.cloneNode(true)));
+      document.body.appendChild(chatTemp);
+
+      const canvas = await html2canvas(chatTemp, {
         scale: 1.5,
         backgroundColor: "#f4f4f4",
         useCORS: true,
         logging: false,
-        allowTaint: false,
-        scrollY: 0,
-        windowHeight: chat.scrollHeight
+        allowTaint: false
       });
 
-      // Restaurar altura original
-      chat.style.height = alturaOriginal;
-      chat.style.overflow = overflowOriginal;
+      document.body.removeChild(chatTemp);
 
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -53,6 +65,7 @@ const ExportManager = {
       const ctxH = ctxLines.length * 4;
 
       // ── Metadatos del dataset ──
+      let startY;
       if (DataManager.metadatos) {
         const m = DataManager.metadatos;
         const metaY = 30 + ctxH + 4;
@@ -60,12 +73,12 @@ const ExportManager = {
         pdf.setFont("helvetica", "normal");
         pdf.setTextColor(100, 100, 100);
         pdf.text(
-          `Dataset: ${m.total} cámaras · ${m.minas.join(", ")} · ${m.zonas.length} zonas · Dil P50: ${(m.dil_p50*100).toFixed(1)}% · Rec P50: ${(m.rec_p50*100).toFixed(1)}%`,
+          `Dataset: ${m.total} cámaras · ${m.minas.join(", ")} · ${m.zonas.length} zonas · Dil P50: ${(m.dil_p50 * 100).toFixed(1)}% · Rec P50: ${(m.rec_p50 * 100).toFixed(1)}%`,
           margin, metaY
         );
-        var startY = metaY + 6;
+        startY = metaY + 6;
       } else {
-        var startY = 30 + ctxH + 6;
+        startY = 30 + ctxH + 6;
       }
 
       // ── Imagen del chat paginada ──
@@ -138,15 +151,12 @@ const ExportManager = {
   _addCabecera(pdf, pageW, margin, fecha, isPrimera) {
     const altoCabecera = isPrimera ? 20 : 12;
 
-    // Fondo marrón
     pdf.setFillColor(44, 24, 16);
     pdf.rect(0, 0, pageW, altoCabecera, "F");
 
-    // Línea roja
     pdf.setFillColor(232, 64, 28);
     pdf.rect(0, altoCabecera, pageW, 2, "F");
 
-    // Texto
     pdf.setTextColor(255, 255, 255);
     pdf.setFont("helvetica", "bold");
 
@@ -162,7 +172,6 @@ const ExportManager = {
     }
   },
 
-  // Exportar solo texto del chat como TXT
   exportarTXT() {
     const msgs = document.querySelectorAll(".msg");
     let contenido = `${CONFIG.EMPRESA} — Análisis de Reconciliación\n`;
