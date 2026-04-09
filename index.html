@@ -4,150 +4,28 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MATSA | Asistente Minero IA</title>
+
+<!-- Estilos -->
+<link rel="stylesheet" href="styles.css">
+
+<!-- Librerías externas -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.0/papaparse.min.js"></script>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Segoe UI, sans-serif; background: #f4f4f4; color: #1a1a1a; height: 100vh; display: flex; flex-direction: column; }
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 
-  /* HEADER */
-  #header {
-    background: #2C1810;
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
-  #header-left { display: flex; align-items: center; gap: 12px; }
-  #logo-box {
-    background: #E8401C;
-    color: white;
-    font-weight: bold;
-    font-size: 14px;
-    padding: 6px 10px;
-    border-radius: 4px;
-  }
-  #header-title { color: white; font-size: 15px; font-weight: 600; }
-  #header-subtitle { color: #aaa; font-size: 11px; }
-  #estado {
-    font-size: 11px;
-    color: #ccc;
-    background: rgba(255,255,255,0.1);
-    padding: 5px 10px;
-    border-radius: 4px;
-  }
-  #btn-cargar {
-    padding: 7px 14px;
-    background: #E8401C;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-  }
-  #btn-cargar:hover { background: #c93516; }
-
-  /* RESUMEN */
-  #btn-resumen {
-    width: 100%;
-    background: #E8401C;
-    color: white;
-    border: none;
-    padding: 9px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-  #btn-resumen:hover { background: #c93516; }
-  #btn-resumen:disabled { background: #ccc; cursor: not-allowed; color: #888; }
-
-  /* CHAT */
-  #chat {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    background: #f4f4f4;
-  }
-  .msg {
-    padding: 10px 14px;
-    border-radius: 6px;
-    max-width: 88%;
-    font-size: 13px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-  }
-  .user {
-    background: #E8401C;
-    color: white;
-    align-self: flex-end;
-    border-radius: 6px 6px 0 6px;
-  }
-  .ai {
-    background: white;
-    color: #1a1a1a;
-    align-self: flex-start;
-    border-left: 3px solid #E8401C;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    border-radius: 0 6px 6px 6px;
-  }
-  .typing { color: #999; font-style: italic; background: white; }
-
-  /* GRAFICAS */
-  .chart-wrapper {
-    align-self: flex-start;
-    width: 88%;
-    background: white;
-    border-radius: 6px;
-    border-left: 3px solid #E8401C;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    padding: 10px;
-  }
-  .chart-wrapper canvas { max-height: 220px; }
-
-  /* INPUT */
-  #input-area {
-    background: white;
-    border-top: 2px solid #E8401C;
-    padding: 10px 16px;
-    display: flex;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-  #input {
-    flex: 1;
-    padding: 8px 12px;
-    border-radius: 4px;
-    border: 1px solid #ddd;
-    font-size: 13px;
-    color: #1a1a1a;
-    background: #f9f9f9;
-  }
-  #input:focus { outline: none; border-color: #E8401C; background: white; }
-  #input:disabled { background: #eee; }
-  button.send {
-    padding: 8px 18px;
-    background: #2C1810;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 13px;
-  }
-  button.send:hover { background: #E8401C; }
-  button.send:disabled { background: #ccc; cursor: not-allowed; }
-
-  #file-input { display: none; }
-</style>
+<!-- Módulos propios — orden importante -->
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="export.js"></script>
+<script src="ui.js"></script>
+<script src="chat.js"></script>
 </head>
 <body>
 
+<!-- ── HEADER ── -->
 <div id="header">
   <div id="header-left">
     <div id="logo-box">SF</div>
@@ -156,194 +34,83 @@
       <div id="header-subtitle">Reconciliación de Cámaras — Análisis inteligente</div>
     </div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center">
+  <div id="header-right">
     <div id="estado">Sin datos cargados</div>
-    <button id="btn-cargar" onclick="document.getElementById('file-input').click()">📂 Cargar datos</button>
-    <input type="file" id="file-input" accept=".csv" onchange="cargarCSV(event)">
+    <button class="btn-header" id="btn-cargar" onclick="document.getElementById('file-input').click()">📂 Cargar datos</button>
+    <button class="btn-header" id="btn-exportar-txt" onclick="ExportManager.exportarTXT()">📝 Exportar TXT</button>
+    <button class="btn-header" id="btn-exportar" onclick="ExportManager.exportarPDF()">📄 Exportar PDF</button>
+    <button class="btn-header" id="btn-limpiar" onclick="ChatManager.limpiarHistorial()">🗑️ Limpiar</button>
+    <input type="file" id="file-input" accept=".csv" onchange="App.cargarCSV(event)">
   </div>
 </div>
 
-<button id="btn-resumen" onclick="solicitarResumen()" disabled>📊 Generar resumen ejecutivo</button>
+<!-- ── CONTEXTO POWER BI ── -->
+<div id="contexto-box">Sin contexto de Power BI. Carga un CSV para comenzar el análisis.</div>
 
+<!-- ── BOTONERA DE ACCIONES ── -->
+<div id="botonera"></div>
+
+<!-- ── CHAT ── -->
 <div id="chat"></div>
 
+<!-- ── INPUT ── -->
 <div id="input-area">
-  <input id="input" type="text" placeholder="Pregunta por una cámara, zona, estadística o pide una gráfica..." onkeydown="if(event.key==='Enter') enviar()" disabled/>
-  <button class="send" id="send-btn" onclick="enviar()" disabled>Enviar</button>
+  <input
+    id="input"
+    type="text"
+    placeholder="Pregunta por una cámara, zona, estadística o pide una gráfica..."
+    onkeydown="if(event.key==='Enter') App.enviar()"
+    disabled
+  />
+  <button class="send" id="send-btn" onclick="App.enviar()" disabled>Enviar</button>
 </div>
 
 <script>
-  const PROXY_URL = "https://anthropic-proxy.manurv2.workers.dev";
-  let datos = [];
-  let historial = [];
-  let contextoBase = "";
+// ── CONTROLADOR PRINCIPAL ──
+const App = {
 
-  function leerContextoURL() {
+  init() {
+    // Leer contexto de URL (Power BI)
     try {
       const search = window.location.search;
       const ctxIndex = search.indexOf("ctx=");
       if (ctxIndex !== -1) {
-        contextoBase = decodeURIComponent(search.substring(ctxIndex + 4).replace(/\+/g, " "));
+        const ctx = decodeURIComponent(search.substring(ctxIndex + 4).replace(/\+/g, " "));
+        ChatManager.init(ctx);
+        document.getElementById("contexto-box").innerText = "📊 " + ctx;
+      } else {
+        ChatManager.init("");
       }
-    } catch(e) {}
-  }
+    } catch(e) {
+      ChatManager.init("");
+    }
 
-  function cargarCSV(event) {
+    // Inicializar UI
+    UI.init();
+  },
+
+  cargarCSV(event) {
     const file = event.target.files[0];
     if (!file) return;
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: function(results) {
-        datos = results.data;
-        const n = datos.length;
-        const minas = [...new Set(datos.map(d => d.Mine || d.Mina || ""))].filter(Boolean).join(", ");
-        const zonas = [...new Set(datos.map(d => d.Zone || d.Zona || ""))].filter(Boolean).length;
-        document.getElementById("estado").innerText = `✅ ${n} cámaras · ${minas} · ${zonas} zonas`;
-        document.getElementById("btn-resumen").disabled = false;
-        document.getElementById("input").disabled = false;
-        document.getElementById("send-btn").disabled = false;
-        addMsg(`Datos cargados correctamente: ${n} cámaras de ${minas} en ${zonas} zonas.\n\nPuedes preguntar por cámaras concretas, comparar zonas, pedir estadísticas o solicitar gráficas.`, "ai");
-      }
+    DataManager.cargarCSV(file, (metadatos) => {
+      UI.actualizarEstado(metadatos);
+      UI.mostrarBienvenida(metadatos);
+      // Alertas automáticas al cargar
+      setTimeout(() => ChatManager.analizarAlertas(), 500);
     });
-  }
+  },
 
-  function buildContexto() {
-    if (datos.length === 0) return contextoBase || "Sin datos cargados.";
-    const resumen = `Dataset: ${datos.length} camaras. Campos: ${Object.keys(datos[0]).join(", ")}. `;
-    const muestra = JSON.stringify(datos.slice(0, 200));
-    const resto = datos.length > 200 ? ` [Primeros 200 de ${datos.length} registros mostrados]` : "";
-    return resumen + "Datos: " + muestra + resto;
-  }
-
-  function addMsg(texto, tipo) {
-    const chat = document.getElementById("chat");
-    const div = document.createElement("div");
-    div.className = "msg " + tipo;
-    div.innerText = texto;
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
-    return div;
-  }
-
-  function renderGrafica(spec) {
-    try {
-      // Aplicar colores Sandfire
-      if (spec.data && spec.data.datasets) {
-        const colors = ["#E8401C","#2C1810","#f5a623","#7a7a7a","#c93516"];
-        spec.data.datasets.forEach((ds, i) => {
-          if (!ds.backgroundColor || ds.backgroundColor === "...") {
-            ds.backgroundColor = spec.type === "line" ? colors[i % colors.length] : 
-              spec.data.labels.map((_, j) => colors[j % colors.length]);
-          }
-          if (spec.type === "line") ds.borderColor = colors[i % colors.length];
-        });
-      }
-      if (!spec.options) spec.options = {};
-      if (!spec.options.plugins) spec.options.plugins = {};
-      spec.options.plugins.legend = { labels: { font: { family: "Segoe UI", size: 11 } } };
-      if (spec.options.plugins.title) {
-        spec.options.plugins.title.font = { family: "Segoe UI", size: 13, weight: "bold" };
-        spec.options.plugins.title.color = "#2C1810";
-      }
-
-      const wrapper = document.createElement("div");
-      wrapper.className = "chart-wrapper";
-      const canvas = document.createElement("canvas");
-      wrapper.appendChild(canvas);
-      document.getElementById("chat").appendChild(wrapper);
-      new Chart(canvas, spec);
-      document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
-    } catch(e) {
-      addMsg("No se pudo renderizar la gráfica: " + e.message, "ai");
-    }
-  }
-
-  async function llamarClaude(prompt) {
-    const sendBtn = document.getElementById("send-btn");
-    const resumenBtn = document.getElementById("btn-resumen");
-    sendBtn.disabled = true;
-    resumenBtn.disabled = true;
-    const typing = addMsg("Analizando...", "ai typing");
-
-    const systemPrompt = `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas de Sandfire MATSA.
-Responde siempre en español técnico para ingenieros senior de minería.
-
-REGLAS DE CALCULO OBLIGATORIAS:
-- Dilución = MIN(1, MAX(0, Sobrexcavacion_tn / PVt)) — recalcula siempre desde datos brutos
-- Recuperación = MIN(1, MAX(0, 1 - Subexcavacion_tn / PVt)) — recalcula siempre desde datos brutos  
-- Al agregar por zona o mina usa suma(Sobrexcavacion_tn) / suma(PVt) ponderado por volumen
-- Valores siempre entre 0 y 1
-
-Contexto Power BI activo: ${contextoBase}
-${buildContexto()}
-
-Si el usuario pide una gráfica, devuelve análisis textual Y al final un bloque con este formato exacto:
-CHART_JSON_START
-{"type":"bar","data":{"labels":[...],"datasets":[{"label":"...","data":[...],"backgroundColor":"#E8401C"}]},"options":{"responsive":true,"plugins":{"title":{"display":true,"text":"..."}}}}
-CHART_JSON_END`;
-
-    try {
-      const response = await fetch(PROXY_URL, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 1500,
-          system: systemPrompt,
-          messages: [
-            ...historial.map(h => ([
-              {role: "user", content: h.p},
-              {role: "assistant", content: h.r}
-            ])).flat(),
-            {role: "user", content: prompt}
-          ]
-        })
-      });
-
-      const data = await response.json();
-      let respuesta = data.content?.[0]?.text || "No se pudo obtener respuesta.";
-
-      const chartMatch = respuesta.match(/CHART_JSON_START\s*([\s\S]*?)\s*CHART_JSON_END/);
-      if (chartMatch) {
-        const chartSpec = JSON.parse(chartMatch[1]);
-        respuesta = respuesta.replace(/CHART_JSON_START[\s\S]*?CHART_JSON_END/, "").trim();
-        typing.remove();
-        addMsg(respuesta, "ai");
-        renderGrafica(chartSpec);
-      } else {
-        typing.remove();
-        addMsg(respuesta, "ai");
-      }
-
-      historial.push({p: prompt, r: respuesta});
-      if (historial.length > 6) historial.shift();
-
-    } catch(e) {
-      typing.remove();
-      addMsg("Error de conexión: " + e.message, "ai");
-    }
-
-    sendBtn.disabled = false;
-    resumenBtn.disabled = false;
-  }
-
-  function enviar() {
+  enviar() {
     const input = document.getElementById("input");
     const texto = input.value.trim();
     if (!texto) return;
-    addMsg(texto, "user");
     input.value = "";
-    llamarClaude(texto);
+    ChatManager.enviar(texto);
   }
+};
 
-  function solicitarResumen() {
-    const prompt = "Genera un resumen ejecutivo completo del dataset. Incluye: estadísticas de dilución y recuperación por zona y mina recalculadas desde datos brutos, cámaras con peores y mejores resultados, patrones relevantes y recomendaciones técnicas concretas para la toma de decisiones operacionales.";
-    addMsg("📊 Resumen ejecutivo solicitado", "user");
-    llamarClaude(prompt);
-  }
-
-  leerContextoURL();
+// Arrancar al cargar la página
+window.addEventListener("DOMContentLoaded", () => App.init());
 </script>
 </body>
 </html>
