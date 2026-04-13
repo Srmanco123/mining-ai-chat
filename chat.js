@@ -40,12 +40,14 @@ PLOTLY_JSON_START
 {"data":[{"type":"box","y":[...],"name":"..."}],"layout":{"title":"..."}}
 PLOTLY_JSON_END
 
-RESTRICCIONES DE GRAFICAS:
+RESTRICCIONES DE GRAFICAS — cumple SIEMPRE:
 - Para Chart.js solo: bar, line, scatter, pie, doughnut — NUNCA boxplot ni violin
 - Para Plotly: box, violin, histogram, heatmap, scatter — JSON 100% válido sin funciones
 - backgroundColor en Chart.js: string o array de strings, NUNCA función
 - Máximo 15 etiquetas en eje X para legibilidad
 - Gráficas compactas y limpias
+- NUNCA incluyas width ni height fijos en el layout de Plotly
+- NUNCA uses Montecarlo ni simulaciones que requieran funciones en el JSON
 
 SUGERENCIAS POST-RESPUESTA:
 Al final de cada respuesta añade siempre este bloque con 3 preguntas de seguimiento relevantes:
@@ -81,7 +83,7 @@ SUGGESTIONS_END`;
       const data = await response.json();
       const respuesta = data.content?.[0]?.text || "No se pudo obtener respuesta.";
 
-      // Clarificación
+      // Clarificación — detectar antes de cualquier otra cosa
       const clarifyMatch = respuesta.match(/CLARIFY_START\s*([\s\S]*?)\s*CLARIFY_END/);
       if (clarifyMatch) {
         try {
@@ -92,28 +94,59 @@ SUGGESTIONS_END`;
         } catch(e) {}
       }
 
-      // Sugerencias
+      // Extraer sugerencias antes de limpiar
       let sugerencias = [];
       const sugMatch = respuesta.match(/SUGGESTIONS_START\s*([\s\S]*?)\s*SUGGESTIONS_END/);
       if (sugMatch) {
         try { sugerencias = JSON.parse(sugMatch[1]); } catch(e) {}
       }
 
-      // Limpiar bloques especiales del texto
+      // Extraer gráficas antes de limpiar
+      const chartMatch = respuesta.match(/CHART_JSON_START\s*([\s\S]*?)\s*CHART_JSON_END/);
+      const plotlyMatch = respuesta.match(/PLOTLY_JSON_START\s*([\s\S]*?)\s*PLOTLY_JSON_END/);
+
+      // Limpiar TODOS los bloques especiales del texto
       const respuestaLimpia = respuesta
-        .replace(/SUGGESTIONS_START[\s\S]*?SUGGESTIONS_END/, "")
-        .replace(/CLARIFY_START[\s\S]*?CLARIFY_END/, "")
+        .replace(/SUGGESTIONS_START[\s\S]*?SUGGESTIONS_END/g, "")
+        .replace(/CLARIFY_START[\s\S]*?CLARIFY_END/g, "")
+        .replace(/CHART_JSON_START[\s\S]*?CHART_JSON_END/g, "")
+        .replace(/PLOTLY_JSON_START[\s\S]*?PLOTLY_JSON_END/g, "")
         .trim();
 
-      // Renderizar respuesta y gráficas
-      ChartManager.procesarRespuesta(respuestaLimpia);
+      // Mostrar texto limpio
+      UI.addMsg(respuestaLimpia, "ai");
+
+      // Renderizar Chart.js si existe
+      if (chartMatch) {
+        try {
+          const spec = JSON.parse(chartMatch[1]);
+          ChartManager.renderChartJS(spec);
+        } catch(e) {
+          UI.addMsg("No se pudo generar la gráfica (JSON inválido). Intenta reformular la petición.", "ai");
+        }
+      }
+
+      // Renderizar Plotly si existe
+      if (plotlyMatch) {
+        try {
+          const spec = JSON.parse(plotlyMatch[1]);
+          // Eliminar width/height fijos si vienen del modelo
+          if (spec.layout) {
+            delete spec.layout.width;
+            delete spec.layout.height;
+          }
+          ChartManager.renderPlotly(spec);
+        } catch(e) {
+          UI.addMsg("No se pudo generar la gráfica avanzada (JSON inválido). Intenta reformular la petición.", "ai");
+        }
+      }
 
       // Mostrar sugerencias
       if (sugerencias.length > 0) {
         UI.mostrarSugerencias(sugerencias);
       }
 
-      // Guardar en historial
+      // Guardar en historial con texto limpio
       this.historial.push({ p: prompt, r: respuestaLimpia });
       if (this.historial.length > 6) this.historial.shift();
 
