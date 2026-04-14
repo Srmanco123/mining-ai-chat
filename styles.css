@@ -310,3 +310,41 @@ body.modo-presentacion .sugerencias-wrapper { display: none; }
 }
 .badge-rojo { background: #E8401C; color: white; }
 .badge-amarillo { background: #f5a623; color: white; }
+
+/* ── MARKDOWN RENDERER ───────────────────────────────────────────── */
+.msg-content { line-height: 1.6; }
+.msg-content p { margin: 0 0 6px 0; }
+.msg-content p:last-child { margin-bottom: 0; }
+.msg-content h2 { font-size: 15px; font-weight: 600; margin: 10px 0 4px; color: #2C1810; }
+.msg-content h3 { font-size: 14px; font-weight: 600; margin: 8px 0 4px; color: #2C1810; }
+.msg-content h4 { font-size: 13px; font-weight: 600; margin: 6px 0 2px; color: #2C1810; }
+.msg-content ul { margin: 4px 0 6px 16px; padding: 0; }
+.msg-content li { margin-bottom: 2px; }
+.msg-content code { background: #f0ece8; border-radius: 3px; padding: 1px 5px; font-size: 12px; font-family: monospace; color: #2C1810; }
+.msg-content strong { color: #2C1810; }
+
+/* ── TABLAS MARKDOWN ─────────────────────────────────────────────── */
+.tbl-wrap { overflow-x: auto; margin: 8px 0; }
+.md-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.md-table th { background: #f0ece8; font-weight: 600; text-align: left; padding: 6px 10px; border-bottom: 2px solid #ddd; color: #2C1810; white-space: nowrap; }
+.md-table td { padding: 5px 10px; border-bottom: 1px solid #eee; color: #333; }
+.md-table tr:last-child td { border-bottom: none; }
+
+/* ── TABLA CLICABLE ──────────────────────────────────────────────── */
+.clickable-table tbody tr { cursor: pointer; transition: background 0.12s; }
+.clickable-table tbody tr:hover { background: #fff3ef; }
+.clickable-table tbody tr:hover td:first-child::after { content: " ›"; color: #E8401C; font-weight: 700; }
+
+/* ── BREADCRUMB ──────────────────────────────────────────────────── */
+.breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; margin-bottom: 8px; padding: 4px 8px; background: #f9f6f4; border-radius: 4px; font-size: 12px; }
+.bc-item { color: #7a7a7a; }
+.bc-active { color: #2C1810; font-weight: 600; }
+.bc-link { color: #E8401C; cursor: pointer; text-decoration: underline dotted; }
+.bc-link:hover { color: #c93516; }
+.bc-sep { color: #bbb; padding: 0 2px; }
+
+/* ── DRILL-DOWN ──────────────────────────────────────────────────── */
+.drilldown-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; margin: 2px 0 6px; }
+.drilldown-label { font-size: 11px; color: #7a7a7a; white-space: nowrap; }
+.btn-drill { font-size: 12px; padding: 4px 12px; border-radius: 20px; border: 1px solid #ddd; background: #fafafa; color: #555; cursor: pointer; white-space: nowrap; transition: all 0.12s; }
+.btn-drill:hover { background: #fff3ef; border-color: #E8401C; color: #E8401C; }
