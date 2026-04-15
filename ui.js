@@ -4,7 +4,7 @@ const UI = {
 
   init() {
     this._renderBotonera();
-    this._renderInputArea();
+    
   },
 
   // ── MARKDOWN RENDERER ──────────────────────────────────────────────
