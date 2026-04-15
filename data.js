@@ -175,4 +175,33 @@ const DataManager = {
       ? ` [Primeros ${CONFIG.MAX_REGISTROS_IA} de ${this.datos.length} registros]` : "";
     return resumen + "Datos: " + muestra + resto;
   }
+,
+
+  buildContextoAgregado() {
+    if (!this.datos.length) return "Sin datos cargados.";
+    const m = this.metadatos;
+    const porZona = this.porZona();
+    const porMina = this.porMina();
+    const sumSobre = this.datos.reduce((s,d) => s + (parseFloat(d[CONFIG.CAMPOS.sobreexcavacion]) || 0), 0);
+    const sumSub   = this.datos.reduce((s,d) => s + (parseFloat(d[CONFIG.CAMPOS.subexcavacion]) || 0), 0);
+    const sumPvt   = this.datos.reduce((s,d) => s + d._pvt, 0);
+    const dilGlobal = sumPvt > 0 ? (sumSobre / sumPvt * 100).toFixed(1) : "0.0";
+    const recGlobal = sumPvt > 0 ? ((1 - sumSub / sumPvt) * 100).toFixed(1) : "0.0";
+
+    const top5dil = [...this.datos].sort((a,b) => b._dil - a._dil).slice(0,5)
+      .map(d => ({ stope: d[CONFIG.CAMPOS.id], zona: d[CONFIG.CAMPOS.zona], dil: (d._dil*100).toFixed(1)+"%", rec: (d._rec*100).toFixed(1)+"%", pvt: Math.round(d._pvt) }));
+    const top5rec = [...this.datos].sort((a,b) => a._rec - b._rec).slice(0,5)
+      .map(d => ({ stope: d[CONFIG.CAMPOS.id], zona: d[CONFIG.CAMPOS.zona], dil: (d._dil*100).toFixed(1)+"%", rec: (d._rec*100).toFixed(1)+"%", pvt: Math.round(d._pvt) }));
+
+    return "ESTADÍSTICAS AGREGADAS (" + m.total + " cámaras | P&V total: " + Math.round(sumPvt) + " tn):\n" +
+      "Dilución ponderada global: " + dilGlobal + "% | Recuperación ponderada global: " + recGlobal + "%\n" +
+      "Percentiles dilución — P25: " + (m.dil_p25*100).toFixed(1) + "% P50: " + (m.dil_p50*100).toFixed(1) + "% P75: " + (m.dil_p75*100).toFixed(1) + "%\n" +
+      "Percentiles recuperación — P25: " + (m.rec_p25*100).toFixed(1) + "% P50: " + (m.rec_p50*100).toFixed(1) + "% P75: " + (m.rec_p75*100).toFixed(1) + "%\n" +
+      "Alertas: " + this.alertas().criticas.length + " críticas | " + this.alertas().medias.length + " intermedias\n\n" +
+      "POR ZONA: " + JSON.stringify(porZona.map(z => ({ zona: z.zona, n: z.n, dil: (z.dil*100).toFixed(1)+"%", rec: (z.rec*100).toFixed(1)+"%", pvt: Math.round(z.pvt) }))) + "\n\n" +
+      "POR MINA: " + JSON.stringify(porMina.map(mn => ({ mina: mn.mina, n: mn.n, dil: (mn.dil*100).toFixed(1)+"%", rec: (mn.rec*100).toFixed(1)+"%" }))) + "\n\n" +
+      "TOP5 MAYOR DILUCIÓN: " + JSON.stringify(top5dil) + "\n" +
+      "TOP5 MENOR RECUPERACIÓN: " + JSON.stringify(top5rec) + "\n" +
+      "Minas disponibles: " + m.minas.join(", ") + " | Zonas: " + m.zonas.join(", ");
+  }
 };
