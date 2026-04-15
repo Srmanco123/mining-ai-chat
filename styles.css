@@ -113,7 +113,6 @@ body {
 #main-layout {
   display: flex;
   flex: 1;
-  height: 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -368,3 +367,19 @@ body.modo-presentacion .sugerencias-wrapper { display: none; }
 /* ── HIGHLIGHT AL SALTAR ── */
 .msg-highlight { animation: highlightMsg 1.5s ease; }
 @keyframes highlightMsg { 0% { background: #fff3ef; } 100% { background: transparent; } }
+
+/* ── MÓDULO PREDICCIÓN — MEJORAS ─────────────────────────────────── */
+.mejoras-wrapper { align-self: flex-start; width: 88%; background: white; border-radius: 6px; border-left: 3px solid #1D9E75; padding: 12px 14px; margin: 4px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.mejoras-titulo { font-size: 12px; color: #555; margin-bottom: 10px; font-weight: 600; }
+.mejoras-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.btn-mejora { display: flex; flex-direction: column; padding: 7px 12px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 12px; text-align: left; transition: all 0.15s; min-width: 180px; }
+.btn-mejora strong { color: #2C1810; font-size: 12px; }
+.btn-mejora span { color: #888; font-size: 11px; margin-top: 2px; }
+.btn-mejora:hover { border-color: #1D9E75; background: #f0faf6; }
+.btn-mejora.activa { border-color: #1D9E75; background: #e8f5ee; }
+.btn-mejora.activa strong { color: #0F6E56; }
+.mejora-custom-row { display: flex; gap: 6px; margin-top: 4px; }
+.mejora-custom-input { flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; }
+.mejora-custom-input:focus { outline: none; border-color: #1D9E75; }
+.btn-mejora-custom { padding: 6px 14px; background: #2C1810; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.btn-mejora-custom:hover { background: #E8401C; }
