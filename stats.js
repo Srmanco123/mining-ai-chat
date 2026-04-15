@@ -119,27 +119,36 @@ const StatsManager = {
     const anios = Object.keys(porAnio).sort();
     if (anios.length < 3) return null;
 
-    // Excluir outliers si se indica
+    // Excluir outliers usando percentil como umbral por año (más realista)
     const p75dil = DataManager.metadatos ? DataManager.metadatos.dil_p75 : 1;
-    const datosFiltrados = filtro.sinOutliers
-      ? datos.filter(d => d._dil <= p75dil)
-      : datos;
 
-    // Recalcular porAnio sin outliers si aplica
     if (filtro.sinOutliers) {
-      Object.keys(porAnio).forEach(a => {
-        porAnio[a] = { sobre:0, sub:0, pvt:0, n:0 };
-      });
-      datosFiltrados.forEach(d => {
+      // Para cada año, calcular P75 local y excluir cámaras que lo superan
+      const porAnioFiltrado = {};
+      anios.forEach(a => { porAnioFiltrado[a] = { sobre:0, sub:0, pvt:0, n:0, dils:[] }; });
+
+      datos.forEach(d => {
         const fecha = d[CONFIG.CAMPOS.fecha];
         if (!fecha) return;
         const anio = String(fecha).substring(0,4);
-        if (!anio || isNaN(anio)) return;
-        if (!porAnio[anio]) porAnio[anio] = { sobre:0, sub:0, pvt:0, n:0 };
-        porAnio[anio].sobre += parseFloat(d[CONFIG.CAMPOS.sobreexcavacion]) || 0;
-        porAnio[anio].sub   += parseFloat(d[CONFIG.CAMPOS.subexcavacion]) || 0;
-        porAnio[anio].pvt   += d._pvt;
-        porAnio[anio].n++;
+        if (!porAnioFiltrado[anio]) return;
+        porAnioFiltrado[anio].dils.push(d._dil);
+      });
+
+      // Calcular P75 por año y filtrar
+      anios.forEach(a => {
+        const dils = porAnioFiltrado[a].dils.slice().sort((x,y)=>x-y);
+        const p75local = dils[Math.floor(dils.length*0.75)] || p75dil;
+        datos.filter(d => {
+          const fecha = d[CONFIG.CAMPOS.fecha];
+          return fecha && String(fecha).substring(0,4)===a && d._dil <= p75local;
+        }).forEach(d => {
+          porAnioFiltrado[a].sobre += parseFloat(d[CONFIG.CAMPOS.sobreexcavacion]) || 0;
+          porAnioFiltrado[a].sub   += parseFloat(d[CONFIG.CAMPOS.subexcavacion]) || 0;
+          porAnioFiltrado[a].pvt   += d._pvt;
+          porAnioFiltrado[a].n++;
+        });
+        porAnio[a] = porAnioFiltrado[a];
       });
     }
 
