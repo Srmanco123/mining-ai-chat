@@ -219,7 +219,11 @@ ${this.buildContexto(prompt)}`;
     if (!accion) return;
     if (accionId === "presentacion") { UI.togglePresentacion(); return; }
     if (accionId === "exportar") { ExportManager.exportarPDF(); return; }
-    if (accionId === "resumen") { ChartManager.graficarResumenZonas(); ChartManager.graficarScatterDilRec(); await this.enviar(accion.prompt); return; }
+    if (accionId === "resumen") {
+      setTimeout(() => { ChartManager.graficarResumenZonas(); ChartManager.graficarScatterDilRec(); }, 100);
+      await this.enviar(accion.prompt);
+      return;
+    }
     if (accionId === "comparar") { ChartManager.graficarComparativaZonas(); await this.enviar(accion.prompt); return; }
     if (accionId === "temporal") { ChartManager.graficarEvolucionTemporal(); await this.enviar(accion.prompt); return; }
     if (accionId === "distribucion") {
