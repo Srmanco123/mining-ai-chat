@@ -8,85 +8,50 @@ const ChatManager = {
   },
 
   buildSystemPrompt() {
-    return `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas de Sandfire MATSA.
-Responde siempre en español técnico para ingenieros senior de minería.
+    return `Eres un experto en reconciliación de cámaras mineras de Sandfire MATSA. Responde en español técnico.
 
-REGLAS DE FORMATO OBLIGATORIAS:
-- Respuestas CORTAS y directas: máximo 4-5 líneas de texto narrativo
-- Usa tablas Markdown (|col|col|) para mostrar datos tabulares — SIEMPRE en lugar de listas
-- Usa **negrita** para valores clave (porcentajes, nombres de cámara, alertas)
-- NO hagas párrafos largos — ve directo al dato relevante
-- Indica siempre cuántas cámaras respaldan cada afirmación
-- Máximo 200 palabras por respuesta en total. Si hay mucho que mostrar, muestra solo el TOP 5 y ofrece drill-down para el resto.
-- NUNCA hagas análisis exhaustivo en una sola respuesta — divide en niveles usando los botones de drill-down.
-- Una respuesta = un nivel de análisis. El detalle va en los botones de seguimiento.
+FORMATO DE RESPUESTA — OBLIGATORIO EN TODAS LAS RESPUESTAS:
+Tu respuesta DEBE seguir EXACTAMENTE esta estructura, en este orden:
 
-REGLAS DE CALCULO OBLIGATORIAS:
-- Dilución = MIN(1, MAX(0, Sobrexcavacion_tn / PVt)) — recalcula siempre desde datos brutos
-- Recuperación = MIN(1, MAX(0, 1 - Subexcavacion_tn / PVt)) — recalcula siempre desde datos brutos
-- Al agregar por zona o mina usa suma(Sobrexcavacion_tn) / suma(PVt) ponderado por volumen
-- Valores siempre entre 0% y 100%
+1. BREADCRUMB_START {"label":"nivel actual","prompt":"prompt para regenerar"} BREADCRUMB_END
+2. Máximo 3 líneas de texto con los datos clave. USA tablas Markdown para datos tabulares.
+3. Si hay más de 5 elementos, muestra solo TOP 5 con "... y N más →" al final.
+4. DRILLDOWN_START [{"label":"Botón corto","prompt":"prompt completo"},{"label":"Botón 2","prompt":"prompt 2"}] DRILLDOWN_END
+5. SUGGESTIONS_START ["sugerencia 1","sugerencia 2","sugerencia 3"] SUGGESTIONS_END
 
-Contexto Power BI activo: ${this.contextoURL}
-${DataManager.buildContexto(this.contextoURL)}
+PROHIBIDO:
+- Más de 3 líneas de texto narrativo
+- Listas con bullet points — usa tablas Markdown
+- Análisis exhaustivo en una sola respuesta
+- Omitir el bloque DRILLDOWN_START...DRILLDOWN_END
 
-DETECCION DE AMBIGUEDAD:
-Si la petición es ambigua devuelve SOLO:
-CLARIFY_START
-{"pregunta": "¿Qué quieres exactamente?", "opciones": ["opcion1", "opcion2", "opcion3"]}
-CLARIFY_END
+REGLAS DE CÁLCULO:
+- Dilución ponderada = Σ(Sobrexcavacion_tn) / Σ(P&V t) — siempre desde datos brutos
+- Recuperación ponderada = 1 - Σ(Subexcavacion_tn) / Σ(P&V t) — siempre desde datos brutos
+- Valores acotados [0%, 100%]
+- Indica siempre N cámaras que respaldan el dato
 
-DRILL-DOWN DINÁMICO — MUY IMPORTANTE:
-Al final de CADA respuesta analítica incluye 2-4 acciones de seguimiento contextuales con este formato exacto:
-DRILLDOWN_START
-[{"label":"Texto botón corto","prompt":"Prompt completo para enviar a Claude"},{"label":"Otro botón","prompt":"Otro prompt"}]
-DRILLDOWN_END
+DRILL-DOWN — acciones según nivel:
+- Dataset global → botones: desglose por mina, top outliers, evolución temporal
+- Mina → botones: zonas de esa mina, outliers de esa mina, comparar minas
+- Zona → botones: cámaras de esa zona, outliers de zona, boxplot
+- Cámara → botones: comparar con zona, cámaras similares, causas, exportar ficha
 
-Las acciones deben ser ESPECÍFICAS al contenido de la respuesta:
-- Si respondes sobre el dataset global → ofrece desglose por mina (ATE, MGD, SOT), top outliers, evolución temporal
-- Si respondes sobre una mina → ofrece desglose por zonas de esa mina, outliers de esa mina, comparar con otras minas
-- Si respondes sobre una zona → ofrece listar cámaras de esa zona, outliers de la zona, boxplot
-- Si respondes sobre una cámara → ofrece comparar con su zona, cámaras similares, análisis de causas, exportar ficha
+AMBIGÜEDAD — si la petición es ambigua devuelve SOLO:
+CLARIFY_START {"pregunta":"¿Qué quieres?","opciones":["op1","op2","op3"]} CLARIFY_END
 
-BREADCRUMB — incluye al inicio de cada respuesta analítica:
-BREADCRUMB_START
-{"label":"Etiqueta corta del nivel actual (ej: 'ATE', 'Zona B', 'ATE_B_0412', 'Resumen general')","prompt":"Prompt para regenerar esta respuesta"}
-BREADCRUMB_END
+GRÁFICAS — Chart.js para barras/líneas/pie:
+CHART_JSON_START {"type":"bar","data":{"labels":[...],"datasets":[{"label":"...","data":[...],"backgroundColor":"#E8401C"}]},"options":{"responsive":true}} CHART_JSON_END
 
-REGLAS DE GRAFICAS:
-Si el usuario pide gráfica simple (barras, líneas, pie) usa Chart.js:
-CHART_JSON_START
-{"type":"bar","data":{"labels":[...],"datasets":[{"label":"...","data":[...],"backgroundColor":"#E8401C"}]},"options":{"responsive":true,"plugins":{"title":{"display":true,"text":"..."}}}}
-CHART_JSON_END
+GRÁFICAS — Plotly para boxplot/heatmap/scatter/regresión:
+PLOTLY_JSON_START {"data":[...],"layout":{"title":"..."}} PLOTLY_JSON_END
 
-Si el usuario pide análisis avanzado (boxplot, violin, distribución, correlación, heatmap, regresión) usa Plotly:
-PLOTLY_JSON_START
-{"data":[{"type":"box","y":[...],"name":"..."}],"layout":{"title":"..."}}
-PLOTLY_JSON_END
+ESTADÍSTICAS — regresión entre variables:
+STATS_START {"type":"regression","x":"_pvt","y":"_dil"} STATS_END
+STATS_START {"type":"correlation","vars":["_pvt","_dil","_rec"]} STATS_END
 
-RESTRICCIONES DE GRAFICAS:
-- Chart.js: solo bar, line, scatter, pie, doughnut — NUNCA boxplot
-- Plotly: box, violin, histogram, heatmap, scatter — JSON 100% válido sin funciones JS
-- backgroundColor en Chart.js: string o array de strings, NUNCA función
-- Máximo 15 etiquetas en eje X
-- NUNCA width ni height fijos en layout de Plotly
-
-CAPACIDADES ESTADÍSTICAS (motor JS en navegador):
-El sistema puede calcular automáticamente: regresión lineal/múltiple, R², correlaciones, percentiles, intervalos de confianza.
-Cuando el usuario pregunte por relaciones entre variables (ej: "¿el volumen afecta a la dilución?"), incluye en tu respuesta:
-STATS_START
-{"type":"regression","x":"_pvt","y":"_dil","label":"P&V t vs Dilución"}
-STATS_END
-O para matriz de correlaciones:
-STATS_START
-{"type":"correlation","vars":["_pvt","_dil","_rec"]}
-STATS_END
-
-SUGERENCIAS POST-RESPUESTA:
-Al final añade siempre:
-SUGGESTIONS_START
-["pregunta sugerida 1", "pregunta sugerida 2", "pregunta sugerida 3"]
-SUGGESTIONS_END`;
+Contexto Power BI: ${this.contextoURL}
+${DataManager.buildContexto(this.contextoURL)}`;
   },
 
   async enviar(prompt) {
@@ -154,26 +119,17 @@ SUGGESTIONS_END`;
         .replace(/STATS_START[\s\S]*?STATS_END/g, "")
         .trim();
 
-      // ── Mostrar mensaje con breadcrumb
+      // ── Mostrar mensaje
       const msgOpts = breadcrumb ? { breadcrumbLabel: breadcrumb.label, breadcrumbPrompt: breadcrumb.prompt } : {};
       UI.addMsg(respuestaLimpia, "ai", msgOpts);
 
-      // ── Estadísticas JS (motor local)
-      if (statsMatch) {
-        try {
-          const spec = JSON.parse(statsMatch[1]);
-          StatsManager.renderStats(spec);
-        } catch(e) {}
-      }
+      // ── Estadísticas
+      if (statsMatch) { try { StatsManager.renderStats(JSON.parse(statsMatch[1])); } catch(e) {} }
 
       // ── Chart.js
       if (chartMatch) {
-        try {
-          const spec = JSON.parse(chartMatch[1]);
-          ChartManager.renderChartJS(spec);
-        } catch(e) {
-          UI.addMsg("No se pudo generar la gráfica (JSON inválido). Intenta reformular la petición.", "ai");
-        }
+        try { ChartManager.renderChartJS(JSON.parse(chartMatch[1])); }
+        catch(e) { UI.addMsg("No se pudo generar la gráfica (JSON inválido).", "ai"); }
       }
 
       // ── Plotly
@@ -182,20 +138,24 @@ SUGGESTIONS_END`;
           const spec = JSON.parse(plotlyMatch[1]);
           if (spec.layout) { delete spec.layout.width; delete spec.layout.height; }
           ChartManager.renderPlotly(spec);
-        } catch(e) {
-          UI.addMsg("No se pudo generar la gráfica avanzada (JSON inválido). Intenta reformular la petición.", "ai");
-        }
+        } catch(e) { UI.addMsg("No se pudo generar la gráfica avanzada (JSON inválido).", "ai"); }
       }
 
-      // ── Drill-down dinámico
+      // ── Drill-down — fallback si Claude no lo genera
       if (drillActions.length > 0) {
         UI.mostrarDrillDown(drillActions);
+      } else {
+        // Fallback genérico según contexto
+        const fallback = DataManager.datos.length > 0 ? [
+          { label: "Desglose por mina", prompt: "Desglose de resultados por mina ATE, MGD y SOT" },
+          { label: "Top outliers", prompt: "Top 5 cámaras con comportamiento más anómalo" },
+          { label: "Evolución temporal", prompt: "Evolución temporal anual de dilución y recuperación ponderadas" }
+        ] : [];
+        if (fallback.length) UI.mostrarDrillDown(fallback);
       }
 
       // ── Sugerencias
-      if (sugerencias.length > 0) {
-        UI.mostrarSugerencias(sugerencias);
-      }
+      if (sugerencias.length > 0) UI.mostrarSugerencias(sugerencias);
 
       this.historial.push({ p: prompt, r: respuestaLimpia });
       if (this.historial.length > 6) this.historial.shift();
@@ -231,15 +191,13 @@ SUGGESTIONS_END`;
     }
     let msg = "";
     if (alertas.criticas.length > 0) {
-      msg += "🔴 " + alertas.criticas.length + " cámaras con alertas críticas (dilución > " + (CONFIG.ALERTAS.dilucion_alta * 100) + "% o recuperación < " + (CONFIG.ALERTAS.recuperacion_baja * 100) + "%):\n";
+      msg += "🔴 " + alertas.criticas.length + " cámaras críticas (dil > " + (CONFIG.ALERTAS.dilucion_alta * 100) + "% o rec < " + (CONFIG.ALERTAS.recuperacion_baja * 100) + "%):\n";
       alertas.criticas.slice(0, 5).forEach(d => {
         msg += "  · " + d[CONFIG.CAMPOS.id] + " — Dil: " + (d._dil * 100).toFixed(1) + "% | Rec: " + (d._rec * 100).toFixed(1) + "%\n";
       });
       if (alertas.criticas.length > 5) msg += "  ... y " + (alertas.criticas.length - 5) + " más.\n";
     }
-    if (alertas.medias.length > 0) {
-      msg += "\n🟡 " + alertas.medias.length + " cámaras con alertas intermedias.";
-    }
+    if (alertas.medias.length > 0) msg += "\n🟡 " + alertas.medias.length + " cámaras con alertas intermedias.";
     UI.addMsg(msg, "ai");
   },
 
