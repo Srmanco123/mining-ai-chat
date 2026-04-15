@@ -2,7 +2,7 @@ const CONFIG = {
   // API
   PROXY_URL: "https://anthropic-proxy.manurv2.workers.dev",
   MODEL: "claude-haiku-4-5-20251001",
-  MAX_TOKENS: 6000,
+  MAX_TOKENS: 8000,
 
   // Empresa
   EMPRESA: "Sandfire MATSA",
@@ -19,7 +19,7 @@ const CONFIG = {
     palette: ["#E8401C", "#2C1810", "#f5a623", "#7a7a7a", "#c93516", "#a0522d", "#d2691e"]
   },
 
-  // Campos del CSV — ajusta si cambian los nombres de columnas
+  // Campos del CSV
   CAMPOS: {
     id: "Stope",
     mina: "Mine",
@@ -36,7 +36,7 @@ const CONFIG = {
     recovery: "Recovery"
   },
 
-  // Fórmulas de reconciliación
+  // Fórmulas
   calcDilucion: (row) => {
     const sobre = parseFloat(row["Sobrexcavacion_tn"]) || 0;
     const pvt = parseFloat(row["P&V t"]) || 1;
@@ -50,24 +50,24 @@ const CONFIG = {
 
   // Umbrales de alerta
   ALERTAS: {
-    dilucion_alta: 0.30,      // > 30% dilución es alerta roja
-    dilucion_media: 0.20,     // > 20% dilución es alerta amarilla
-    recuperacion_baja: 0.80,  // < 80% recuperación es alerta roja
-    recuperacion_media: 0.88  // < 88% recuperación es alerta amarilla
+    dilucion_alta: 0.30,
+    dilucion_media: 0.20,
+    recuperacion_baja: 0.80,
+    recuperacion_media: 0.88
   },
 
-  // Número de registros a enviar a Claude
+  // Registros raw enviados a Claude — solo para búsquedas de cámara concreta
   MAX_REGISTROS_IA: 200,
 
-  // Acciones rápidas de la botonera
+  // Acciones rápidas
   ACCIONES: [
-    { id: "resumen",      icono: "📊", label: "Resumen ejecutivo",      prompt: "Genera un resumen ejecutivo completo del dataset con estadísticas de dilución y recuperación por zona y mina, recalculadas desde datos brutos ponderados por volumen. Identifica las zonas con mejor y peor rendimiento y da recomendaciones técnicas." },
-    { id: "alertas",      icono: "⚠️", label: "Alertas automáticas",    prompt: "Analiza el dataset completo e identifica las alertas críticas: cámaras con dilución excesiva, recuperación insuficiente y combinaciones problemáticas. Ordénalas por severidad e impacto en toneladas." },
-    { id: "comparar",     icono: "🔍", label: "Comparar zonas",         prompt: "Compara el rendimiento de todas las zonas presentes en el dataset. Para cada zona calcula dilución media ponderada, recuperación media ponderada, variabilidad (rango intercuartil) y número de cámaras. Genera una gráfica de barras agrupadas." },
-    { id: "temporal",     icono: "📈", label: "Evolución temporal",     prompt: "Analiza la evolución temporal de dilución y recuperación. Agrupa por año o trimestre según la densidad de datos y muestra si hay tendencias de mejora o empeoramiento. Genera una gráfica de líneas." },
-    { id: "outliers",     icono: "🎯", label: "Top outliers",           prompt: "Identifica las 10 cámaras con comportamiento más anómalo. Para cada una indica el Stope, zona, mina, dilución real, recuperación real y desviación respecto a la mediana de su grupo. Explica posibles causas técnicas." },
-    { id: "distribucion", icono: "📉", label: "Distribución estadística", prompt: "Analiza la distribución estadística de dilución y recuperación del dataset. Calcula P10, P25, P50, P75, P90, media y desviación típica por zona. Genera una gráfica de barras con los percentiles P25/P50/P75 por zona." },
-    { id: "presentacion", icono: "🖥️", label: "Modo presentación",     prompt: null },
-    { id: "exportar",     icono: "📄", label: "Exportar PDF",           prompt: null }
+    { id: "resumen",      icono: "📊", label: "Resumen ejecutivo",       prompt: "RESUMEN_EJECUTIVO" },
+    { id: "alertas",      icono: "⚠️", label: "Alertas automáticas",     prompt: "Analiza las alertas críticas del dataset: top 5 cámaras con mayor dilución ponderada y top 5 con menor recuperación ponderada. Solo eso, nada más." },
+    { id: "comparar",     icono: "🔍", label: "Comparar zonas",          prompt: "Tabla comparativa de zonas: dilución ponderada, recuperación ponderada, N cámaras. Ordena de mejor a peor dilución." },
+    { id: "temporal",     icono: "📈", label: "Evolución temporal",      prompt: "Evolución anual de dilución y recuperación ponderadas. Tabla por año + gráfica de líneas." },
+    { id: "outliers",     icono: "🎯", label: "Top outliers",            prompt: "Top 5 cámaras con mayor dilución ponderada y top 5 con menor recuperación ponderada. Solo tabla con: Stope, Zona, Dil%, Rec%, P&V t." },
+    { id: "distribucion", icono: "📉", label: "Distribución estadística", prompt: "Distribución estadística: tabla con P25/P50/P75 de dilución y recuperación por zona. Luego boxplot." },
+    { id: "presentacion", icono: "🖥️", label: "Modo presentación",      prompt: null },
+    { id: "exportar",     icono: "📄", label: "Exportar PDF",            prompt: null }
   ]
 };
