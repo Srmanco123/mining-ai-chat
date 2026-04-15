@@ -7,32 +7,42 @@ const ChatManager = {
     this.contextoURL = contextoURL;
   },
 
-  // Contexto inteligente: agregado para resúmenes, raw para búsquedas de cámara
   buildContexto(prompt) {
     if (!DataManager.datos.length) return "Sin datos cargados.";
-
     const esResumen = prompt === "RESUMEN_EJECUTIVO" ||
       /resumen|global|todas las zonas|todas las minas|dataset completo|comparar zona/i.test(prompt);
     const esCamara = /CAM |cámara|stope/i.test(prompt);
-
     if (esResumen || !esCamara) {
-      // Enviar solo estadísticas agregadas — mucho más corto
       return DataManager.buildContextoAgregado();
     } else {
-      // Búsqueda de cámara concreta — enviar datos raw filtrados
       return DataManager.buildContexto(this.contextoURL);
     }
   },
 
   buildSystemPrompt(prompt) {
     const esResumen = prompt === "RESUMEN_EJECUTIVO";
+
+    // Obtener zonas y minas reales del dataset para el ejemplo de drill-down
+    const zonas = DataManager.metadatos ? DataManager.metadatos.zonas.filter(z => z && z !== "Sin zona") : [];
+    const minas = DataManager.metadatos ? DataManager.metadatos.minas : [];
+    const ejemploDrill = zonas.length > 0
+      ? "DRILLDOWN_START [" +
+        zonas.slice(0, 4).map(z => '{"label":"' + z + '","prompt":"Desglose completo zona ' + z + ': N cámaras, dilución ponderada, recuperación ponderada, top 3 outliers"}').join(",") +
+        ',{"label":"Top outliers","prompt":"Top 5 cámaras con mayor dilución ponderada del dataset"}' +
+        ',{"label":"Evolución temporal","prompt":"Evolución anual de dilución y recuperación ponderadas con gráfica de líneas"}' +
+        "] DRILLDOWN_END"
+      : 'DRILLDOWN_START [{"label":"Top outliers","prompt":"Top 5 cámaras con mayor dilución ponderada"},{"label":"Evolución temporal","prompt":"Evolución anual de dilución y recuperación ponderadas"}] DRILLDOWN_END';
+
     const instruccionResumen = esResumen ? `
 INSTRUCCIÓN ESPECIAL — RESUMEN EJECUTIVO:
 Responde ÚNICAMENTE con esta estructura, sin añadir nada más:
-1. Tabla global: dilución ponderada, recuperación ponderada, N cámaras, sobrexcavación total, subexcavación total
+1. Tabla global: dilución ponderada, recuperación ponderada, N cámaras, P&V total
 2. Tabla por zona (ordenada de mejor a peor dilución): zona, N, dilución ponderada, recuperación ponderada, estado
-3. Máximo 2 líneas de conclusión
-4. DRILLDOWN con botones por zona + outliers + evolución
+3. Máximo 1 línea de conclusión
+4. DRILLDOWN con un botón por cada zona del dataset + "Top outliers" + "Evolución temporal"
+
+EJEMPLO EXACTO de cómo debe quedar el DRILLDOWN para este dataset:
+${ejemploDrill}
 ` : "";
 
     return `Eres un experto en reconciliación de cámaras mineras de Sandfire MATSA. Responde en español técnico.
@@ -52,7 +62,7 @@ REGLAS ESTRICTAS:
 - Tablas Markdown para datos: | Col | Col | — nunca listas con bullets
 - **negrita** para valores clave
 - TOP 5 máximo si hay muchos elementos — el resto en drill-down
-- DRILLDOWN_START...DRILLDOWN_END es OBLIGATORIO siempre, al final, antes de SUGGESTIONS
+- DRILLDOWN_START...DRILLDOWN_END es OBLIGATORIO siempre, con botones ESPECÍFICOS al contenido
 - Dilución y recuperación: escribe siempre "ponderada"
 ${instruccionResumen}
 CÁLCULO:
@@ -61,11 +71,11 @@ CÁLCULO:
 - Agrega siempre ponderado por volumen, nunca media aritmética
 - Indica siempre N cámaras
 
-DRILL-DOWN según nivel:
-- Global → botones: una por cada mina/zona disponible + top outliers + evolución temporal
-- Mina → botones: zonas de esa mina, outliers, comparar minas
-- Zona → botones: top 5 cámaras de zona, outliers zona, boxplot zona
-- Cámara → botones: comparar con zona, cámaras similares, causas, exportar ficha
+DRILL-DOWN según nivel — botones ESPECÍFICOS:
+- Global → un botón por cada zona real del dataset (nombres exactos) + "Top outliers" + "Evolución temporal"
+- Mina → un botón por cada zona de esa mina + "Outliers de [mina]" + "Comparar minas"
+- Zona → botones: "Top 5 cámaras de [zona]", "Outliers de [zona]", "Boxplot [zona]"
+- Cámara → botones: "Comparar con [zona]", "Cámaras similares", "Posibles causas", "Exportar ficha"
 
 AMBIGÜEDAD:
 CLARIFY_START {"pregunta":"texto","opciones":["op1","op2","op3"]} CLARIFY_END
@@ -86,8 +96,6 @@ ${this.buildContexto(prompt)}`;
 
   async enviar(prompt) {
     if (!prompt.trim()) return;
-
-    // Resolver token especial de resumen
     const promptMostrado = prompt === "RESUMEN_EJECUTIVO" ? "Resumen ejecutivo del dataset" : prompt;
     UI.addMsg(promptMostrado, "user");
     UI.setLoading(true);
@@ -176,17 +184,20 @@ ${this.buildContexto(prompt)}`;
         } catch(e) { UI.addMsg("No se pudo generar la gráfica avanzada (JSON inválido).", "ai"); }
       }
 
-      // ── Drill-down — fallback garantizado
+      // ── Drill-down — específico si Claude lo genera, fallback con zonas reales si no
       if (drillActions.length > 0) {
         UI.mostrarDrillDown(drillActions);
       } else {
-        const zonas = DataManager.metadatos ? DataManager.metadatos.zonas.slice(0, 3) : [];
+        const zonas = DataManager.metadatos ? DataManager.metadatos.zonas.filter(z => z && z !== "Sin zona").slice(0, 4) : [];
         const minas = DataManager.metadatos ? DataManager.metadatos.minas : [];
-        const fallback = [
-          ...minas.map(m => ({ label: "Desglosar " + m, prompt: "Desglose completo de la mina " + m + ": zonas, dilución ponderada, recuperación ponderada y outliers" })),
-          { label: "Top 5 outliers", prompt: "Top 5 cámaras con mayor dilución ponderada del dataset" },
-          { label: "Evolución temporal", prompt: "Evolución anual de dilución y recuperación ponderadas con gráfica de líneas" }
-        ].slice(0, 4);
+        const fallback = zonas.length > 0
+          ? [
+              ...zonas.map(z => ({ label: z, prompt: "Desglose completo zona " + z + ": N cámaras, dilución ponderada, recuperación ponderada, top 3 outliers" })),
+              { label: "Top outliers", prompt: "Top 5 cámaras con mayor dilución ponderada del dataset" },
+              { label: "Evolución temporal", prompt: "Evolución anual de dilución y recuperación ponderadas con gráfica de líneas" }
+            ].slice(0, 5)
+          : minas.map(m => ({ label: m, prompt: "Desglose completo mina " + m + ": zonas, dilución ponderada, recuperación ponderada" }))
+            .concat([{ label: "Top outliers", prompt: "Top 5 cámaras con mayor dilución ponderada" }]);
         UI.mostrarDrillDown(fallback);
       }
 
