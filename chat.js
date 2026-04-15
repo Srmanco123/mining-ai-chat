@@ -9,7 +9,7 @@ const ChatManager = {
 
   buildContexto(prompt) {
     if (!DataManager.datos.length) return "Sin datos cargados.";
-    const esResumen = prompt === "RESUMEN_EJECUTIVO" ||
+    const esResumen = prompt === "RESUMEN_EJECUTIVO" || prompt === "PREDICCION_GLOBAL" || prompt === "CLUSTERING" ||
       /resumen|global|todas las zonas|todas las minas|dataset completo|comparar zona/i.test(prompt);
     const esCamara = /CAM |cámara|stope/i.test(prompt);
     if (esResumen || !esCamara) {
@@ -73,8 +73,8 @@ CÁLCULO:
 
 DRILL-DOWN según nivel — botones ESPECÍFICOS:
 - Global → un botón por cada zona real del dataset (nombres exactos) + "Top outliers" + "Evolución temporal"
-- Mina → un botón por cada zona de esa mina + "Outliers de [mina]" + "Comparar minas"
-- Zona → botones: "Top 5 cámaras de [zona]", "Outliers de [zona]", "Boxplot [zona]"
+- Mina → un botón por cada zona de esa mina + "Outliers de [mina]" + "Comparar minas" + "Predecir tendencia [mina]" con prompt "prediccion — concretamente: Mina: [nombre_mina]"
+- Zona → botones: "Top 5 cámaras de [zona]", "Outliers de [zona]", "Boxplot [zona]", "Predecir tendencia [zona]" con prompt "prediccion — concretamente: Zona: [nombre_zona]"
 - Cámara → botones: "Comparar con [zona]", "Cámaras similares", "Posibles causas", "Exportar ficha"
 
 AMBIGÜEDAD:
@@ -96,6 +96,16 @@ ${this.buildContexto(prompt)}`;
 
   async enviar(prompt) {
     if (!prompt.trim()) return;
+    if (prompt === "CLUSTERING") { StatsManager.renderClustering(); UI.setLoading(false); return; }
+    if (prompt === "PREDICCION_GLOBAL") {
+      const minas = DataManager.metadatos ? DataManager.metadatos.minas : [];
+      const zonas = DataManager.metadatos ? DataManager.metadatos.zonas.filter(z=>z&&z!=="Sin zona") : [];
+      UI.mostrarClarificacion("¿Para qué quieres la predicción?",
+        [...minas.map(m=>"Mina: "+m), ...zonas.slice(0,4).map(z=>"Zona: "+z), "Dataset global"],
+        "prediccion");
+      UI.setLoading(false);
+      return;
+    }
     const promptMostrado = prompt === "RESUMEN_EJECUTIVO" ? "Resumen ejecutivo del dataset" : prompt;
     UI.addMsg(promptMostrado, "user");
     UI.setLoading(true);
@@ -124,6 +134,17 @@ ${this.buildContexto(prompt)}`;
       const respuesta = data.content?.[0]?.text || "No se pudo obtener respuesta.";
 
       // ── Clarificación
+      // Interceptar selección de predicción desde clarificación
+      if (prompt.startsWith("prediccion — concretamente: ")) {
+        const seleccion = prompt.replace("prediccion — concretamente: ", "").trim();
+        let filtro = { tipo: "global", valor: null };
+        if (seleccion.startsWith("Mina: ")) filtro = { tipo:"mina", valor: seleccion.replace("Mina: ","") };
+        else if (seleccion.startsWith("Zona: ")) filtro = { tipo:"zona", valor: seleccion.replace("Zona: ","") };
+        StatsManager.renderPrediccion(filtro);
+        UI.setLoading(false);
+        return;
+      }
+
       const clarifyMatch = respuesta.match(/CLARIFY_START\s*(\{[\s\S]*?\})\s*CLARIFY_END/);
       if (clarifyMatch) {
         try {
@@ -219,6 +240,18 @@ ${this.buildContexto(prompt)}`;
     if (!accion) return;
     if (accionId === "presentacion") { UI.togglePresentacion(); return; }
     if (accionId === "exportar") { ExportManager.exportarPDF(); return; }
+    if (accionId === "prediccion") {
+      const minas = DataManager.metadatos ? DataManager.metadatos.minas : [];
+      const zonas = DataManager.metadatos ? DataManager.metadatos.zonas.filter(z=>z&&z!=="Sin zona") : [];
+      // Clarificación: elegir nivel
+      UI.mostrarClarificacion(
+        "¿Para qué quieres la predicción?",
+        [...minas.map(m=>"Mina: "+m), ...zonas.slice(0,4).map(z=>"Zona: "+z), "Dataset global"],
+        "prediccion"
+      );
+      return;
+    }
+    if (accionId === "clustering") { StatsManager.renderClustering(); return; }
     if (accionId === "resumen") {
       setTimeout(() => { ChartManager.graficarResumenZonas(); ChartManager.graficarScatterDilRec(); }, 100);
       await this.enviar(accion.prompt);
