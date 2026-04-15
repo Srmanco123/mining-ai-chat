@@ -7,7 +7,34 @@ const ChatManager = {
     this.contextoURL = contextoURL;
   },
 
-  buildSystemPrompt() {
+  // Contexto inteligente: agregado para resúmenes, raw para búsquedas de cámara
+  buildContexto(prompt) {
+    if (!DataManager.datos.length) return "Sin datos cargados.";
+
+    const esResumen = prompt === "RESUMEN_EJECUTIVO" ||
+      /resumen|global|todas las zonas|todas las minas|dataset completo|comparar zona/i.test(prompt);
+    const esCamara = /CAM |cámara|stope/i.test(prompt);
+
+    if (esResumen || !esCamara) {
+      // Enviar solo estadísticas agregadas — mucho más corto
+      return DataManager.buildContextoAgregado();
+    } else {
+      // Búsqueda de cámara concreta — enviar datos raw filtrados
+      return DataManager.buildContexto(this.contextoURL);
+    }
+  },
+
+  buildSystemPrompt(prompt) {
+    const esResumen = prompt === "RESUMEN_EJECUTIVO";
+    const instruccionResumen = esResumen ? `
+INSTRUCCIÓN ESPECIAL — RESUMEN EJECUTIVO:
+Responde ÚNICAMENTE con esta estructura, sin añadir nada más:
+1. Tabla global: dilución ponderada, recuperación ponderada, N cámaras, sobrexcavación total, subexcavación total
+2. Tabla por zona (ordenada de mejor a peor dilución): zona, N, dilución ponderada, recuperación ponderada, estado
+3. Máximo 2 líneas de conclusión
+4. DRILLDOWN con botones por zona + outliers + evolución
+` : "";
+
     return `Eres un experto en reconciliación de cámaras mineras de Sandfire MATSA. Responde en español técnico.
 
 FORMATO OBLIGATORIO — sigue este orden exacto en TODAS las respuestas:
@@ -16,18 +43,18 @@ BREADCRUMB_START {"label":"nivel actual","prompt":"prompt para regenerar"} BREAD
 
 [máximo 3 líneas de texto + tabla Markdown si hay datos tabulares]
 
-DRILLDOWN_START [{"label":"Botón 1","prompt":"prompt completo 1"},{"label":"Botón 2","prompt":"prompt completo 2"},{"label":"Botón 3","prompt":"prompt completo 3"}] DRILLDOWN_END
+DRILLDOWN_START [{"label":"Botón 1","prompt":"prompt 1"},{"label":"Botón 2","prompt":"prompt 2"},{"label":"Botón 3","prompt":"prompt 3"}] DRILLDOWN_END
 
 SUGGESTIONS_START ["sugerencia 1","sugerencia 2","sugerencia 3"] SUGGESTIONS_END
 
 REGLAS ESTRICTAS:
-- Máximo 3 líneas narrativas — el resto va en botones de drill-down
+- Máximo 3 líneas narrativas — el detalle va en los botones drill-down
 - Tablas Markdown para datos: | Col | Col | — nunca listas con bullets
 - **negrita** para valores clave
-- TOP 5 máximo si hay muchos elementos
-- El bloque DRILLDOWN_START...DRILLDOWN_END es OBLIGATORIO en TODAS las respuestas
+- TOP 5 máximo si hay muchos elementos — el resto en drill-down
+- DRILLDOWN_START...DRILLDOWN_END es OBLIGATORIO siempre, al final, antes de SUGGESTIONS
 - Dilución y recuperación: escribe siempre "ponderada"
-
+${instruccionResumen}
 CÁLCULO:
 - Dilución ponderada = Σ(Sobrexcavacion_tn) / Σ(P&V t) acotada [0,1]
 - Recuperación ponderada = 1 - Σ(Subexcavacion_tn) / Σ(P&V t) acotada [0,1]
@@ -35,10 +62,10 @@ CÁLCULO:
 - Indica siempre N cámaras
 
 DRILL-DOWN según nivel:
-- Global → botones: ATE, MGD, SOT, top outliers, evolución
+- Global → botones: una por cada mina/zona disponible + top outliers + evolución temporal
 - Mina → botones: zonas de esa mina, outliers, comparar minas
-- Zona → botones: cámaras de zona, outliers zona, boxplot
-- Cámara → botones: comparar zona, similares, causas, exportar
+- Zona → botones: top 5 cámaras de zona, outliers zona, boxplot zona
+- Cámara → botones: comparar con zona, cámaras similares, causas, exportar ficha
 
 AMBIGÜEDAD:
 CLARIFY_START {"pregunta":"texto","opciones":["op1","op2","op3"]} CLARIFY_END
@@ -54,12 +81,15 @@ STATS_START {"type":"regression","x":"_pvt","y":"_dil"} STATS_END
 STATS_START {"type":"correlation","vars":["_pvt","_dil","_rec"]} STATS_END
 
 Contexto Power BI: ${this.contextoURL}
-${DataManager.buildContexto(this.contextoURL)}`;
+${this.buildContexto(prompt)}`;
   },
 
   async enviar(prompt) {
     if (!prompt.trim()) return;
-    UI.addMsg(prompt, "user");
+
+    // Resolver token especial de resumen
+    const promptMostrado = prompt === "RESUMEN_EJECUTIVO" ? "Resumen ejecutivo del dataset" : prompt;
+    UI.addMsg(promptMostrado, "user");
     UI.setLoading(true);
 
     try {
@@ -69,13 +99,15 @@ ${DataManager.buildContexto(this.contextoURL)}`;
         body: JSON.stringify({
           model: CONFIG.MODEL,
           max_tokens: CONFIG.MAX_TOKENS,
-          system: this.buildSystemPrompt(),
+          system: this.buildSystemPrompt(prompt),
           messages: [
             ...this.historial.map(h => ([
               { role: "user", content: h.p },
               { role: "assistant", content: h.r }
             ])).flat(),
-            { role: "user", content: prompt }
+            { role: "user", content: prompt === "RESUMEN_EJECUTIVO"
+                ? "Genera el resumen ejecutivo del dataset siguiendo exactamente la instrucción especial."
+                : prompt }
           ]
         })
       });
@@ -84,7 +116,7 @@ ${DataManager.buildContexto(this.contextoURL)}`;
       const respuesta = data.content?.[0]?.text || "No se pudo obtener respuesta.";
 
       // ── Clarificación
-      const clarifyMatch = respuesta.match(/CLARIFY_START\s*([\s\S]*?)\s*CLARIFY_END/);
+      const clarifyMatch = respuesta.match(/CLARIFY_START\s*(\{[\s\S]*?\})\s*CLARIFY_END/);
       if (clarifyMatch) {
         try {
           const clarify = JSON.parse(clarifyMatch[1]);
@@ -96,7 +128,7 @@ ${DataManager.buildContexto(this.contextoURL)}`;
 
       // ── Extraer bloques
       let sugerencias = [];
-      const sugMatch = respuesta.match(/SUGGESTIONS_START\s*([\s\S]*?)\s*SUGGESTIONS_END/);
+      const sugMatch = respuesta.match(/SUGGESTIONS_START\s*(\[[\s\S]*?\])\s*SUGGESTIONS_END/);
       if (sugMatch) { try { sugerencias = JSON.parse(sugMatch[1]); } catch(e) {} }
 
       let drillActions = [];
@@ -144,23 +176,24 @@ ${DataManager.buildContexto(this.contextoURL)}`;
         } catch(e) { UI.addMsg("No se pudo generar la gráfica avanzada (JSON inválido).", "ai"); }
       }
 
-      // ── Drill-down — siempre aparece (fallback si Claude no genera)
+      // ── Drill-down — fallback garantizado
       if (drillActions.length > 0) {
         UI.mostrarDrillDown(drillActions);
       } else {
+        const zonas = DataManager.metadatos ? DataManager.metadatos.zonas.slice(0, 3) : [];
         const minas = DataManager.metadatos ? DataManager.metadatos.minas : [];
         const fallback = [
-          { label: "Desglose por mina", prompt: "Desglose por mina " + (minas.join(", ") || "ATE, MGD, SOT") + ": dilución y recuperación ponderadas" },
+          ...minas.map(m => ({ label: "Desglosar " + m, prompt: "Desglose completo de la mina " + m + ": zonas, dilución ponderada, recuperación ponderada y outliers" })),
           { label: "Top 5 outliers", prompt: "Top 5 cámaras con mayor dilución ponderada del dataset" },
-          { label: "Evolución temporal", prompt: "Evolución anual de dilución y recuperación ponderadas" }
-        ];
+          { label: "Evolución temporal", prompt: "Evolución anual de dilución y recuperación ponderadas con gráfica de líneas" }
+        ].slice(0, 4);
         UI.mostrarDrillDown(fallback);
       }
 
       // ── Sugerencias
       if (sugerencias.length > 0) UI.mostrarSugerencias(sugerencias);
 
-      this.historial.push({ p: prompt, r: respuestaLimpia });
+      this.historial.push({ p: promptMostrado, r: respuestaLimpia });
       if (this.historial.length > 6) this.historial.shift();
 
     } catch(e) {
