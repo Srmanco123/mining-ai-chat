@@ -4,18 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MATSA | Asistente Minero IA</title>
-
-<!-- Estilos -->
 <link rel="stylesheet" href="styles.css">
-
-<!-- Librerías externas -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.0/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-
-<!-- Módulos propios — orden importante -->
 <script src="config.js"></script>
 <script src="data.js"></script>
 <script src="charts.js"></script>
@@ -26,7 +20,6 @@
 </head>
 <body>
 
-<!-- ── HEADER ── -->
 <div id="header">
   <div id="header-left">
     <div id="logo-box">SF</div>
@@ -41,20 +34,28 @@
     <button class="btn-header" id="btn-exportar-txt" onclick="ExportManager.exportarTXT()">📝 Exportar TXT</button>
     <button class="btn-header" id="btn-exportar" onclick="ExportManager.exportarPDF()">📄 Exportar PDF</button>
     <button class="btn-header" id="btn-limpiar" onclick="ChatManager.limpiarHistorial()">🗑️ Limpiar</button>
+    <button class="btn-header" id="btn-indice" onclick="UI.toggleIndice()">☰ Índice</button>
     <input type="file" id="file-input" accept=".csv" onchange="App.cargarCSV(event)">
   </div>
 </div>
 
-<!-- ── CONTEXTO POWER BI ── -->
 <div id="contexto-box">Sin contexto de Power BI. Carga un CSV para comenzar el análisis.</div>
-
-<!-- ── BOTONERA DE ACCIONES ── -->
 <div id="botonera"></div>
 
-<!-- ── CHAT ── -->
-<div id="chat"></div>
+<!-- ── LAYOUT PRINCIPAL: chat + panel lateral ── -->
+<div id="main-layout">
+  <div id="chat"></div>
 
-<!-- ── INPUT ── -->
+  <!-- Panel índice lateral -->
+  <div id="indice-panel" class="indice-cerrado">
+    <div class="indice-header">
+      <span class="indice-titulo">Índice de sesión</span>
+      <span id="indice-contador" class="indice-contador">0 entradas</span>
+    </div>
+    <div id="indice-lista"></div>
+  </div>
+</div>
+
 <div id="input-area">
   <input
     id="input"
@@ -67,11 +68,8 @@
 </div>
 
 <script>
-// ── CONTROLADOR PRINCIPAL ──
 const App = {
-
   init() {
-    // Leer contexto de URL (Power BI)
     try {
       const search = window.location.search;
       const ctxIndex = search.indexOf("ctx=");
@@ -85,8 +83,6 @@ const App = {
     } catch(e) {
       ChatManager.init("");
     }
-
-    // Inicializar UI
     UI.init();
   },
 
@@ -96,7 +92,6 @@ const App = {
     DataManager.cargarCSV(file, (metadatos) => {
       UI.actualizarEstado(metadatos);
       UI.mostrarBienvenida(metadatos);
-      // Alertas automáticas al cargar
       setTimeout(() => ChatManager.analizarAlertas(), 500);
     });
   },
@@ -110,7 +105,6 @@ const App = {
   }
 };
 
-// Arrancar al cargar la página
 window.addEventListener("DOMContentLoaded", () => App.init());
 </script>
 </body>
