@@ -119,6 +119,30 @@ const StatsManager = {
     const anios = Object.keys(porAnio).sort();
     if (anios.length < 3) return null;
 
+    // Excluir outliers si se indica
+    const p75dil = DataManager.metadatos ? DataManager.metadatos.dil_p75 : 1;
+    const datosFiltrados = filtro.sinOutliers
+      ? datos.filter(d => d._dil <= p75dil)
+      : datos;
+
+    // Recalcular porAnio sin outliers si aplica
+    if (filtro.sinOutliers) {
+      Object.keys(porAnio).forEach(a => {
+        porAnio[a] = { sobre:0, sub:0, pvt:0, n:0 };
+      });
+      datosFiltrados.forEach(d => {
+        const fecha = d[CONFIG.CAMPOS.fecha];
+        if (!fecha) return;
+        const anio = String(fecha).substring(0,4);
+        if (!anio || isNaN(anio)) return;
+        if (!porAnio[anio]) porAnio[anio] = { sobre:0, sub:0, pvt:0, n:0 };
+        porAnio[anio].sobre += parseFloat(d[CONFIG.CAMPOS.sobreexcavacion]) || 0;
+        porAnio[anio].sub   += parseFloat(d[CONFIG.CAMPOS.subexcavacion]) || 0;
+        porAnio[anio].pvt   += d._pvt;
+        porAnio[anio].n++;
+      });
+    }
+
     const xs = anios.map(a => parseInt(a));
     const dilValues = anios.map(a => porAnio[a].pvt>0 ? porAnio[a].sobre/porAnio[a].pvt : 0);
     const recValues = anios.map(a => porAnio[a].pvt>0 ? 1-porAnio[a].sub/porAnio[a].pvt : 1);
@@ -128,7 +152,7 @@ const StatsManager = {
 
     // Proyectar 2 años
     const ultimoAnio = xs[xs.length-1];
-    const proxAnios = [ultimoAnio+1, ultimoAnio+2];
+    const proxAnios = Array.from({length:10}, (_,i) => ultimoAnio+i+1);
 
     const proyBase = proxAnios.map(a => ({
       anio: a,
@@ -153,7 +177,7 @@ const StatsManager = {
     const ultimaRec = (pred.recValues[pred.recValues.length-1]*100).toFixed(1);
     const tendDil = pred.regDil && pred.regDil.b > 0.005 ? "↑ empeorando" : pred.regDil && pred.regDil.b < -0.005 ? "↓ mejorando" : "→ estable";
 
-    UI.addMsg("**Predicción: " + nombre + "** (" + pred.n + " cámaras)\nDilución actual: **" + ultimaDil + "%** — tendencia " + tendDil + "\nProyección a " + (pred.xs[pred.xs.length-1]+2) + " con 3 escenarios. Activa mejoras para modificar el escenario optimista.", "ai");
+    UI.addMsg("**Predicción: " + nombre + "** (" + pred.n + " cámaras)\nDilución actual: **" + ultimaDil + "%** — tendencia " + tendDil + "\nProyección a 10 años con 3 escenarios. Activa mejoras para modificar el escenario optimista.", "ai");
 
     // Gráfica de predicción
     const todosAnios = [...pred.anios, ...pred.proyBase.map(p=>String(p.anio))];
@@ -178,6 +202,37 @@ const StatsManager = {
     const chat = document.getElementById("chat");
     const wrapper = document.createElement("div");
     wrapper.className = "mejoras-wrapper";
+
+    // Toggle excluir outliers
+    const toggleRow = document.createElement("div");
+    toggleRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:10px;";
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn-mejora";
+    toggleBtn.style.cssText = "min-width:auto;padding:5px 12px;";
+    toggleBtn.innerHTML = "<strong>Excluir outliers</strong><span>Solo cámaras con dil ≤ P75</span>";
+    let sinOutliers = false;
+    toggleBtn.onclick = () => {
+      sinOutliers = !sinOutliers;
+      toggleBtn.classList.toggle("activa", sinOutliers);
+      const nuevoPred = StatsManager.predecirZona({...filtro, sinOutliers});
+      if (nuevoPred) {
+        const charts = document.querySelectorAll(".chart-wrapper");
+        const lastChart = charts[charts.length-1];
+        if (lastChart) {
+          const div = lastChart.querySelector("div");
+          if (div && div._fullLayout) {
+            Plotly.restyle(div, {
+              y: [nuevoPred.dilValues.map(v=>+(v*100).toFixed(1)),
+                  nuevoPred.proyBase.map(p=>+(p.dil*100).toFixed(1)),
+                  nuevoPred.proyPes.map(p=>+(p.dil*100).toFixed(1)),
+                  nuevoPred.proyOpt.map(p=>+(p.dil*100).toFixed(1))]
+            }, [0,1,2,3]);
+          }
+        }
+      }
+    };
+    toggleRow.appendChild(toggleBtn);
+    wrapper.appendChild(toggleRow);
 
     const titulo = document.createElement("div");
     titulo.className = "mejoras-titulo";
