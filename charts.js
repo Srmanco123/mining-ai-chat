@@ -28,7 +28,8 @@ const ChartManager = {
         spec.options.plugins.title.color = CONFIG.COLORES.secundario;
         spec.options.plugins.title.display = true;
       }
-      const wrapper = this._crearWrapper();
+      const titulo = spec.options && spec.options.plugins && spec.options.plugins.title ? spec.options.plugins.title.text : "Gráfica";
+      const wrapper = this._crearWrapper(titulo);
       const canvas = document.createElement("canvas");
       canvas.style.maxHeight = "220px";
       wrapper.appendChild(canvas);
@@ -53,7 +54,8 @@ const ChartManager = {
       if (spec.layout.title && typeof spec.layout.title === "string") {
         spec.layout.title = { text: spec.layout.title, font: { size: 13, color: CONFIG.COLORES.secundario, family: "Segoe UI" } };
       }
-      const wrapper = this._crearWrapper();
+      const tituloPlotly = spec.layout && spec.layout.title ? (typeof spec.layout.title === "string" ? spec.layout.title : spec.layout.title.text) : "Gráfica";
+      const wrapper = this._crearWrapper(tituloPlotly);
       const div = document.createElement("div");
       wrapper.appendChild(div);
       document.getElementById("chat").appendChild(wrapper);
@@ -221,9 +223,12 @@ const ChartManager = {
     });
   },
 
-  _crearWrapper() {
+  _crearWrapper(titulo) {
     const wrapper = document.createElement("div");
     wrapper.className = "chart-wrapper";
+    if (titulo && typeof UI !== "undefined" && UI.addChartIndice) {
+      setTimeout(() => UI.addChartIndice(titulo, wrapper), 50);
+    }
     return wrapper;
   },
 
