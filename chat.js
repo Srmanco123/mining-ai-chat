@@ -10,43 +10,46 @@ const ChatManager = {
   buildSystemPrompt() {
     return `Eres un experto en reconciliación de cámaras mineras de Sandfire MATSA. Responde en español técnico.
 
-FORMATO DE RESPUESTA — OBLIGATORIO EN TODAS LAS RESPUESTAS:
-Tu respuesta DEBE seguir EXACTAMENTE esta estructura, en este orden:
+FORMATO OBLIGATORIO — sigue este orden exacto en TODAS las respuestas:
 
-1. BREADCRUMB_START {"label":"nivel actual","prompt":"prompt para regenerar"} BREADCRUMB_END
-2. Máximo 3 líneas de texto con los datos clave. USA tablas Markdown para datos tabulares.
-3. Si hay más de 5 elementos, muestra solo TOP 5 con "... y N más →" al final.
-4. DRILLDOWN_START [{"label":"Botón corto","prompt":"prompt completo"},{"label":"Botón 2","prompt":"prompt 2"}] DRILLDOWN_END
-5. SUGGESTIONS_START ["sugerencia 1","sugerencia 2","sugerencia 3"] SUGGESTIONS_END
+BREADCRUMB_START {"label":"nivel actual","prompt":"prompt para regenerar"} BREADCRUMB_END
 
-PROHIBIDO:
-- Más de 3 líneas de texto narrativo
-- Listas con bullet points — usa tablas Markdown
-- Análisis exhaustivo en una sola respuesta
-- Omitir el bloque DRILLDOWN_START...DRILLDOWN_END
+[máximo 3 líneas de texto + tabla Markdown si hay datos tabulares]
 
-REGLAS DE CÁLCULO:
-- Dilución ponderada = Σ(Sobrexcavacion_tn) / Σ(P&V t) — siempre desde datos brutos
-- Recuperación ponderada = 1 - Σ(Subexcavacion_tn) / Σ(P&V t) — siempre desde datos brutos
-- Valores acotados [0%, 100%]
-- Indica siempre N cámaras que respaldan el dato
+DRILLDOWN_START [{"label":"Botón 1","prompt":"prompt completo 1"},{"label":"Botón 2","prompt":"prompt completo 2"},{"label":"Botón 3","prompt":"prompt completo 3"}] DRILLDOWN_END
 
-DRILL-DOWN — acciones según nivel:
-- Dataset global → botones: desglose por mina, top outliers, evolución temporal
-- Mina → botones: zonas de esa mina, outliers de esa mina, comparar minas
-- Zona → botones: cámaras de esa zona, outliers de zona, boxplot
-- Cámara → botones: comparar con zona, cámaras similares, causas, exportar ficha
+SUGGESTIONS_START ["sugerencia 1","sugerencia 2","sugerencia 3"] SUGGESTIONS_END
 
-AMBIGÜEDAD — si la petición es ambigua devuelve SOLO:
-CLARIFY_START {"pregunta":"¿Qué quieres?","opciones":["op1","op2","op3"]} CLARIFY_END
+REGLAS ESTRICTAS:
+- Máximo 3 líneas narrativas — el resto va en botones de drill-down
+- Tablas Markdown para datos: | Col | Col | — nunca listas con bullets
+- **negrita** para valores clave
+- TOP 5 máximo si hay muchos elementos
+- El bloque DRILLDOWN_START...DRILLDOWN_END es OBLIGATORIO en TODAS las respuestas
+- Dilución y recuperación: escribe siempre "ponderada"
 
-GRÁFICAS — Chart.js para barras/líneas/pie:
+CÁLCULO:
+- Dilución ponderada = Σ(Sobrexcavacion_tn) / Σ(P&V t) acotada [0,1]
+- Recuperación ponderada = 1 - Σ(Subexcavacion_tn) / Σ(P&V t) acotada [0,1]
+- Agrega siempre ponderado por volumen, nunca media aritmética
+- Indica siempre N cámaras
+
+DRILL-DOWN según nivel:
+- Global → botones: ATE, MGD, SOT, top outliers, evolución
+- Mina → botones: zonas de esa mina, outliers, comparar minas
+- Zona → botones: cámaras de zona, outliers zona, boxplot
+- Cámara → botones: comparar zona, similares, causas, exportar
+
+AMBIGÜEDAD:
+CLARIFY_START {"pregunta":"texto","opciones":["op1","op2","op3"]} CLARIFY_END
+
+GRÁFICA SIMPLE (barras/líneas/pie):
 CHART_JSON_START {"type":"bar","data":{"labels":[...],"datasets":[{"label":"...","data":[...],"backgroundColor":"#E8401C"}]},"options":{"responsive":true}} CHART_JSON_END
 
-GRÁFICAS — Plotly para boxplot/heatmap/scatter/regresión:
+GRÁFICA AVANZADA (boxplot/heatmap/scatter):
 PLOTLY_JSON_START {"data":[...],"layout":{"title":"..."}} PLOTLY_JSON_END
 
-ESTADÍSTICAS — regresión entre variables:
+ESTADÍSTICAS:
 STATS_START {"type":"regression","x":"_pvt","y":"_dil"} STATS_END
 STATS_START {"type":"correlation","vars":["_pvt","_dil","_rec"]} STATS_END
 
@@ -91,22 +94,22 @@ ${DataManager.buildContexto(this.contextoURL)}`;
         } catch(e) {}
       }
 
-      // ── Extraer bloques especiales
+      // ── Extraer bloques
       let sugerencias = [];
       const sugMatch = respuesta.match(/SUGGESTIONS_START\s*([\s\S]*?)\s*SUGGESTIONS_END/);
       if (sugMatch) { try { sugerencias = JSON.parse(sugMatch[1]); } catch(e) {} }
 
       let drillActions = [];
-      const drillMatch = respuesta.match(/DRILLDOWN_START\s*([\s\S]*?)\s*DRILLDOWN_END/);
+      const drillMatch = respuesta.match(/DRILLDOWN_START\s*(\[[\s\S]*?\])\s*DRILLDOWN_END/);
       if (drillMatch) { try { drillActions = JSON.parse(drillMatch[1]); } catch(e) {} }
 
       let breadcrumb = null;
-      const bcMatch = respuesta.match(/BREADCRUMB_START\s*([\s\S]*?)\s*BREADCRUMB_END/);
+      const bcMatch = respuesta.match(/BREADCRUMB_START\s*(\{[\s\S]*?\})\s*BREADCRUMB_END/);
       if (bcMatch) { try { breadcrumb = JSON.parse(bcMatch[1]); } catch(e) {} }
 
-      const chartMatch = respuesta.match(/CHART_JSON_START\s*([\s\S]*?)\s*CHART_JSON_END/);
-      const plotlyMatch = respuesta.match(/PLOTLY_JSON_START\s*([\s\S]*?)\s*PLOTLY_JSON_END/);
-      const statsMatch = respuesta.match(/STATS_START\s*([\s\S]*?)\s*STATS_END/);
+      const chartMatch = respuesta.match(/CHART_JSON_START\s*(\{[\s\S]*?\})\s*CHART_JSON_END/);
+      const plotlyMatch = respuesta.match(/PLOTLY_JSON_START\s*(\{[\s\S]*?\})\s*PLOTLY_JSON_END/);
+      const statsMatch = respuesta.match(/STATS_START\s*(\{[\s\S]*?\})\s*STATS_END/);
 
       // ── Limpiar texto
       const respuestaLimpia = respuesta
@@ -141,17 +144,17 @@ ${DataManager.buildContexto(this.contextoURL)}`;
         } catch(e) { UI.addMsg("No se pudo generar la gráfica avanzada (JSON inválido).", "ai"); }
       }
 
-      // ── Drill-down — fallback si Claude no lo genera
+      // ── Drill-down — siempre aparece (fallback si Claude no genera)
       if (drillActions.length > 0) {
         UI.mostrarDrillDown(drillActions);
       } else {
-        // Fallback genérico según contexto
-        const fallback = DataManager.datos.length > 0 ? [
-          { label: "Desglose por mina", prompt: "Desglose de resultados por mina ATE, MGD y SOT" },
-          { label: "Top outliers", prompt: "Top 5 cámaras con comportamiento más anómalo" },
-          { label: "Evolución temporal", prompt: "Evolución temporal anual de dilución y recuperación ponderadas" }
-        ] : [];
-        if (fallback.length) UI.mostrarDrillDown(fallback);
+        const minas = DataManager.metadatos ? DataManager.metadatos.minas : [];
+        const fallback = [
+          { label: "Desglose por mina", prompt: "Desglose por mina " + (minas.join(", ") || "ATE, MGD, SOT") + ": dilución y recuperación ponderadas" },
+          { label: "Top 5 outliers", prompt: "Top 5 cámaras con mayor dilución ponderada del dataset" },
+          { label: "Evolución temporal", prompt: "Evolución anual de dilución y recuperación ponderadas" }
+        ];
+        UI.mostrarDrillDown(fallback);
       }
 
       // ── Sugerencias
