@@ -67,6 +67,8 @@ const CONFIG = {
     { id: "temporal",     icono: "📈", label: "Evolución temporal",      prompt: "Evolución anual de dilución y recuperación ponderadas. Tabla por año + gráfica de líneas." },
     { id: "outliers",     icono: "🎯", label: "Top outliers",            prompt: "Top 5 cámaras con mayor dilución ponderada y top 5 con menor recuperación ponderada. Solo tabla con: Stope, Zona, Dil%, Rec%, P&V t." },
     { id: "distribucion", icono: "📉", label: "Distribución estadística", prompt: "Distribución estadística: tabla con P25/P50/P75 de dilución y recuperación por zona. Luego boxplot." },
+    { id: "prediccion",  icono: "📐", label: "Predicción",             prompt: "PREDICCION_GLOBAL" },
+    { id: "clustering",  icono: "🔵", label: "Clustering",             prompt: "CLUSTERING" },
     { id: "presentacion", icono: "🖥️", label: "Modo presentación",      prompt: null },
     { id: "exportar",     icono: "📄", label: "Exportar PDF",            prompt: null }
   ]
