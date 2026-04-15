@@ -1,10 +1,91 @@
 const UI = {
   modoPresentacion: false,
   _breadcrumb: [],
+  _indiceEntradas: [],
+  _indiceAbierto: false,
+  _entradaCounter: 0,
 
   init() {
     this._renderBotonera();
-    
+  },
+
+  // ── ÍNDICE LATERAL ─────────────────────────────────────────────────
+  toggleIndice() {
+    this._indiceAbierto = !this._indiceAbierto;
+    const panel = document.getElementById("indice-panel");
+    const btn = document.getElementById("btn-indice");
+    if (this._indiceAbierto) {
+      panel.classList.remove("indice-cerrado");
+      panel.classList.add("indice-abierto");
+      btn.style.background = "#E8401C";
+      btn.style.color = "white";
+    } else {
+      panel.classList.add("indice-cerrado");
+      panel.classList.remove("indice-abierto");
+      btn.style.background = "";
+      btn.style.color = "";
+    }
+  },
+
+  _addIndiceEntrada(tipo, texto, elemento, breadcrumb) {
+    this._entradaCounter++;
+    const id = "idx-" + this._entradaCounter;
+    const entrada = { id, tipo, texto, elemento, breadcrumb };
+    this._indiceEntradas.push(entrada);
+    this._renderIndice();
+    return id;
+  },
+
+  _renderIndice() {
+    const lista = document.getElementById("indice-lista");
+    const contador = document.getElementById("indice-contador");
+    if (!lista) return;
+    contador.textContent = this._indiceEntradas.length + " entradas";
+    lista.innerHTML = "";
+
+    let ultimaSeccion = "";
+    this._indiceEntradas.forEach(e => {
+      // Sección por breadcrumb
+      const seccion = e.breadcrumb || "General";
+      if (seccion !== ultimaSeccion) {
+        const sep = document.createElement("div");
+        sep.className = "indice-seccion";
+        sep.textContent = seccion;
+        lista.appendChild(sep);
+        ultimaSeccion = seccion;
+      }
+
+      const item = document.createElement("div");
+      item.className = "indice-item indice-tipo-" + e.tipo;
+      item.id = e.id;
+
+      const icono = document.createElement("span");
+      icono.className = "indice-icono";
+      icono.textContent = e.tipo === "user" ? "P" : e.tipo === "chart" ? "G" : "R";
+      item.appendChild(icono);
+
+      const txt = document.createElement("span");
+      txt.className = "indice-texto";
+      txt.textContent = e.texto.length > 40 ? e.texto.substring(0, 38) + "…" : e.texto;
+      item.appendChild(txt);
+
+      item.onclick = () => {
+        // Quitar activo previo
+        document.querySelectorAll(".indice-item").forEach(el => el.classList.remove("indice-activo"));
+        item.classList.add("indice-activo");
+        // Saltar al elemento en el chat
+        if (e.elemento && e.elemento.scrollIntoView) {
+          e.elemento.scrollIntoView({ behavior: "smooth", block: "center" });
+          e.elemento.classList.add("msg-highlight");
+          setTimeout(() => e.elemento.classList.remove("msg-highlight"), 1500);
+        }
+      };
+
+      lista.appendChild(item);
+    });
+
+    // Scroll al final del índice
+    lista.scrollTop = lista.scrollHeight;
   },
 
   // ── MARKDOWN RENDERER ──────────────────────────────────────────────
@@ -39,6 +120,11 @@ const UI = {
     if (this._breadcrumb.length && this._breadcrumb[this._breadcrumb.length - 1].label === label) return;
     this._breadcrumb.push({ label, prompt });
     if (this._breadcrumb.length > 5) this._breadcrumb.shift();
+  },
+
+  _getBreadcrumbActual() {
+    if (!this._breadcrumb.length) return "General";
+    return this._breadcrumb.map(b => b.label).join(" › ");
   },
 
   _renderBreadcrumb() {
@@ -98,10 +184,23 @@ const UI = {
       contenido.textContent = texto;
     }
     wrapper.appendChild(contenido);
-
     chat.appendChild(wrapper);
     chat.scrollTop = chat.scrollHeight;
+
+    // Registrar en índice (no registrar typing ni mensajes vacíos)
+    if (tipo === "user" && texto.trim()) {
+      this._addIndiceEntrada("user", texto, wrapper, this._getBreadcrumbActual());
+    } else if (tipo === "ai" && texto.trim() && !wrapper.classList.contains("typing")) {
+      const resumen = texto.replace(/\n/g, " ").substring(0, 50);
+      this._addIndiceEntrada("ai", resumen, wrapper, this._getBreadcrumbActual());
+    }
+
     return wrapper;
+  },
+
+  // Registrar gráfica en índice (llamado desde ChartManager)
+  addChartIndice(titulo, elemento) {
+    this._addIndiceEntrada("chart", titulo, elemento, this._getBreadcrumbActual());
   },
 
   // ── DRILL-DOWN DINÁMICO ────────────────────────────────────────────
