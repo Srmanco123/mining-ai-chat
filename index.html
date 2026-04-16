@@ -10,16 +10,17 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<!-- Módulos propios — orden importante -->
 <script src="config.js"></script>
 <script src="data.js"></script>
 <script src="charts.js"></script>
 <script src="export.js"></script>
 <script src="ui.js"></script>
-<script src="stats.js"></script>
 <script src="chat.js"></script>
 </head>
 <body>
 
+<!-- ── HEADER ── -->
 <div id="header">
   <div id="header-left">
     <div id="logo-box">SF</div>
@@ -31,43 +32,42 @@
   <div id="header-right">
     <div id="estado">Sin datos cargados</div>
     <button class="btn-header" id="btn-cargar" onclick="document.getElementById('file-input').click()">📂 Cargar datos</button>
-    <button class="btn-header" id="btn-exportar-txt" onclick="ExportManager.exportarTXT()">📝 Exportar TXT</button>
-    <button class="btn-header" id="btn-exportar" onclick="ExportManager.exportarPDF()">📄 Exportar PDF</button>
-    <button class="btn-header" id="btn-limpiar" onclick="ChatManager.limpiarHistorial()">🗑️ Limpiar</button>
-    <button class="btn-header" id="btn-indice" onclick="UI.toggleIndice()">☰ Índice</button>
+    <button class="btn-header" onclick="ExportManager.exportarTXT()">📝 Exportar TXT</button>
+    <button class="btn-header" onclick="ExportManager.exportarPDF()">📄 Exportar PDF</button>
+    <button class="btn-header" onclick="ChatManager.limpiarHistorial()">🗑️ Limpiar</button>
     <input type="file" id="file-input" accept=".csv" onchange="App.cargarCSV(event)">
   </div>
 </div>
 
-<div id="contexto-box">Sin contexto de Power BI. Carga un CSV para comenzar el análisis.</div>
+<!-- ── CONTEXTO POWER BI ── -->
+<div id="contexto-box">Sin contexto de Power BI activo — abre desde el informe para cargar filtros automáticamente.</div>
+
+<!-- ── BOTONERA DE ACCIONES ── -->
 <div id="botonera"></div>
 
-<!-- ── LAYOUT PRINCIPAL: chat + panel lateral ── -->
-<div id="main-layout">
-  <div id="chat"></div>
-
-  <!-- Panel índice lateral -->
-  <div id="indice-panel" class="indice-cerrado">
-    <div class="indice-header">
-      <span class="indice-titulo">Índice de sesión</span>
-      <span id="indice-contador" class="indice-contador">0 entradas</span>
+<!-- ── CHAT ── -->
+<div id="chat">
+  <div class="msg ai" style="border-left:3px solid #E8401C;">
+    <div class="msg-content">
+      <strong>Bienvenido al Asistente Minero IA de Sandfire MATSA</strong><br><br>
+      Carga un CSV exportado desde Power BI para comenzar el análisis.
     </div>
-    <div id="indice-lista"></div>
   </div>
 </div>
 
+<!-- ── INPUT ── -->
 <div id="input-area">
   <input
     id="input"
     type="text"
     placeholder="Pregunta por una cámara, zona, estadística o pide una gráfica..."
-    onkeydown="if(event.key==='Enter') App.enviar()"
     disabled
   />
   <button class="send" id="send-btn" onclick="App.enviar()" disabled>Enviar</button>
 </div>
 
 <script>
+// ── CONTROLADOR PRINCIPAL ──────────────────────────────────
 const App = {
   init() {
     try {
@@ -76,7 +76,8 @@ const App = {
       if (ctxIndex !== -1) {
         const ctx = decodeURIComponent(search.substring(ctxIndex + 4).replace(/\+/g, " "));
         ChatManager.init(ctx);
-        document.getElementById("contexto-box").innerText = "📊 " + ctx;
+        document.getElementById("contexto-box").innerText = "📊 Filtro activo Power BI: " + ctx;
+        document.getElementById("contexto-box").style.background = "#2C1810";
       } else {
         ChatManager.init("");
       }
@@ -92,8 +93,9 @@ const App = {
     DataManager.cargarCSV(file, (metadatos) => {
       UI.actualizarEstado(metadatos);
       UI.mostrarBienvenida(metadatos);
-      setTimeout(() => ChatManager.analizarAlertas(), 500);
     });
+    // Reset input para permitir cargar el mismo archivo de nuevo
+    event.target.value = "";
   },
 
   enviar() {

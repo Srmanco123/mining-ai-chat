@@ -1,118 +1,370 @@
+// ============================================================
+//  chat.js  —  Lógica de chat, historial, llamadas a Claude
+//  Versión 3.0 — Prompts plantillados + drill-downs + memoria
+// ============================================================
+
 const ChatManager = {
-  historial: [],
+  historial: [],         // últimas 6 interacciones (chat libre)
   contextoURL: "",
   modoPresentacion: false,
 
+  // ── MEMORIA DE CONSULTAS ──────────────────────────────────
+  // Guarda las últimas consultas del usuario para poder
+  // referenciarlas con "repite esto para Zona X"
+  _consultasRecientes: [],   // [ { nombre, prompt, respuesta } ]
+  _ultimaConsulta: null,     // { nombre, prompt, respuesta }
+
+  _guardarConsulta(prompt, respuesta) {
+    const entrada = {
+      nombre: this._generarNombreConsulta(prompt),
+      prompt,
+      respuesta,
+      timestamp: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
+    };
+    this._ultimaConsulta = entrada;
+    this._consultasRecientes.unshift(entrada);
+    if (this._consultasRecientes.length > 10) this._consultasRecientes.pop();
+    return entrada;
+  },
+
+  _generarNombreConsulta(prompt) {
+    // Genera un nombre corto legible a partir del prompt
+    const texto = prompt.trim().replace(/\n/g, " ");
+    if (texto.length <= 40) return texto;
+    return texto.substring(0, 37) + "…";
+  },
+
+  // ── INIT ─────────────────────────────────────────────────
   init(contextoURL) {
     this.contextoURL = contextoURL;
   },
 
-  buildContexto(prompt) {
-    if (!DataManager.datos.length) return "Sin datos cargados.";
-    const esResumen = prompt === "RESUMEN_EJECUTIVO" || prompt === "PREDICCION_GLOBAL" || prompt === "CLUSTERING" ||
-      /resumen|global|todas las zonas|todas las minas|dataset completo|comparar zona/i.test(prompt);
-    const esCamara = /CAM |cámara|stope/i.test(prompt);
-    if (esResumen || !esCamara) {
-      return DataManager.buildContextoAgregado();
-    } else {
-      return DataManager.buildContexto(this.contextoURL);
-    }
+  // ── SYSTEM PROMPT BASE (chat libre) ──────────────────────
+  buildSystemPrompt() {
+    return `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas de Sandfire MATSA.
+Responde siempre en español técnico para ingenieros senior de minería.
+Sé conciso. Máximo 200 palabras de texto por respuesta. El detalle va en los drill-downs.
+
+REGLAS DE CÁLCULO OBLIGATORIAS:
+- Dilución = MIN(1, MAX(0, Sobrexcavacion_tn / PVt)) — recalcula siempre desde datos brutos
+- Recuperación = MIN(1, MAX(0, 1 - Subexcavacion_tn / PVt)) — recalcula siempre desde datos brutos
+- Al agregar usa suma(Sobrexcavacion_tn) / suma(PVt) ponderado por volumen
+- Indica siempre cuántas cámaras respaldan cada afirmación
+- Valores siempre entre 0% y 100%
+- Escribe siempre "dilución ponderada" y "recuperación ponderada", nunca "media" ni "promedio" a secas
+
+Contexto Power BI activo: ${this.contextoURL}
+${DataManager.buildContexto(this.contextoURL)}
+
+DETECCIÓN DE AMBIGÜEDAD:
+Si la petición es ambigua, devuelve SOLO:
+CLARIFY_START
+{"pregunta": "¿Qué quieres exactamente?", "opciones": ["opcion1", "opcion2", "opcion3", "opcion4"]}
+CLARIFY_END
+
+REGLAS DE GRÁFICAS:
+Gráficas simples (bar, line, pie, doughnut) → Chart.js:
+CHART_JSON_START
+{"type":"bar","data":{"labels":[...],"datasets":[{"label":"...","data":[...],"backgroundColor":"#E8401C"}]},"options":{"responsive":true,"plugins":{"title":{"display":true,"text":"..."}}}}
+CHART_JSON_END
+
+Gráficas avanzadas (boxplot, violin, heatmap, distribución) → Plotly:
+PLOTLY_JSON_START
+{"data":[{"type":"box","y":[...],"name":"..."}],"layout":{"title":"..."}}
+PLOTLY_JSON_END
+
+RESTRICCIONES GRÁFICAS:
+- Chart.js: solo bar, line, scatter, pie, doughnut — NUNCA boxplot ni violin
+- Plotly: box, violin, histogram, heatmap, scatter — JSON válido sin funciones JS
+- backgroundColor en Chart.js: string o array de strings, NUNCA función
+- Máximo 15 etiquetas en eje X
+
+MEMORIA DE CONSULTA:
+Al final de CADA respuesta añade siempre este bloque con 3 sugerencias de seguimiento
+contextuales (basadas en los datos reales, no genéricas):
+SUGGESTIONS_START
+["sugerencia contextual 1", "sugerencia contextual 2", "sugerencia contextual 3"]
+SUGGESTIONS_END`;
   },
 
-  buildSystemPrompt(prompt) {
-    const esResumen = prompt === "RESUMEN_EJECUTIVO";
+  // ── PROMPTS PLANTILLADOS — 8 ACCIONES RÁPIDAS ────────────
+  // Cada acción tiene su propio prompt con estructura fija.
+  // Claude rellena los huecos pero NO puede cambiar la estructura.
+  _promptAccion(id) {
+    const ctx = DataManager.buildContexto(this.contextoURL);
 
-    // Obtener zonas y minas reales del dataset para el ejemplo de drill-down
-    const zonas = DataManager.metadatos ? DataManager.metadatos.zonas.filter(z => z && z !== "Sin zona") : [];
-    const minas = DataManager.metadatos ? DataManager.metadatos.minas : [];
-    const ejemploDrill = zonas.length > 0
-      ? "DRILLDOWN_START [" +
-        zonas.slice(0, 4).map(z => '{"label":"' + z + '","prompt":"Desglose completo zona ' + z + ': N cámaras, dilución ponderada, recuperación ponderada, top 3 outliers"}').join(",") +
-        ',{"label":"Top outliers","prompt":"Top 5 cámaras con mayor dilución ponderada del dataset"}' +
-        ',{"label":"Evolución temporal","prompt":"Evolución anual de dilución y recuperación ponderadas con gráfica de líneas"}' +
-        "] DRILLDOWN_END"
-      : 'DRILLDOWN_START [{"label":"Top outliers","prompt":"Top 5 cámaras con mayor dilución ponderada"},{"label":"Evolución temporal","prompt":"Evolución anual de dilución y recuperación ponderadas"}] DRILLDOWN_END';
+    const plantillas = {
 
-    const instruccionResumen = esResumen ? `
-INSTRUCCIÓN ESPECIAL — RESUMEN EJECUTIVO:
-Responde ÚNICAMENTE con esta estructura, sin añadir nada más:
-1. Tabla global: dilución ponderada, recuperación ponderada, N cámaras, P&V total
-2. Tabla por zona (ordenada de mejor a peor dilución): zona, N, dilución ponderada, recuperación ponderada, estado
-3. Máximo 1 línea de conclusión
-4. DRILLDOWN con un botón por cada zona del dataset + "Top outliers" + "Evolución temporal"
+      // ── 1. RESUMEN EJECUTIVO ────────────────────────────
+      resumen: `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones. No escribas texto fuera de las secciones.
 
-EJEMPLO EXACTO de cómo debe quedar el DRILLDOWN para este dataset:
-${ejemploDrill}
-` : "";
+## 📊 Resumen Ejecutivo
+**Dataset:** [N cámaras] | [minas presentes] | Período: [fecha_min] – [fecha_max]
 
-    return `Eres un experto en reconciliación de cámaras mineras de Sandfire MATSA. Responde en español técnico.
+## Métricas Globales
+| Métrica | Valor | N cámaras |
+|---------|-------|-----------|
+| Dilución ponderada | X.X% | N |
+| Recuperación ponderada | X.X% | N |
+| Outliers dilución (>P75) | N | — |
+| Outliers recuperación (<P25) | N | — |
 
-FORMATO OBLIGATORIO — sigue este orden exacto en TODAS las respuestas:
+## Por Zona (top 5 por volumen PVt)
+| Zona | Dil% | Rec% | Cámaras | Estado |
+|------|------|------|---------|--------|
+[máx. 5 filas — Estado: ✅ Normal / ⚠️ Atención / 🔴 Crítico]
 
-BREADCRUMB_START {"label":"nivel actual","prompt":"prompt para regenerar"} BREADCRUMB_END
+## ⚠️ Alertas Críticas
+[lista de máx. 3 cámaras: · ID — Dil: X% | Rec: X%]
+[Si no hay alertas escribe: · Sin alertas críticas en el dataset actual]
 
-[análisis técnico — ver reglas de longitud abajo]
+## 💡 Recomendaciones
+1. [acción concreta con zona/cámara específica]
+2. [acción concreta con zona/cámara específica]
+3. [acción concreta si procede]
 
-DRILLDOWN_START [{"label":"Botón 1","prompt":"prompt 1"},{"label":"Botón 2","prompt":"prompt 2"},{"label":"Botón 3","prompt":"prompt 3"}] DRILLDOWN_END
+CHART_JSON_START
+[Genera un gráfico de barras horizontales: dilución ponderada por zona, colores #E8401C para valores >15% y #2C1810 para el resto]
+CHART_JSON_END
 
-SUGGESTIONS_START ["sugerencia 1","sugerencia 2","sugerencia 3"] SUGGESTIONS_END
+SUGGESTIONS_START
+[3 sugerencias contextuales basadas en los datos reales que acabas de calcular — ej. si una zona tiene dilución muy alta, sugiere analizarla en detalle]
+SUGGESTIONS_END
 
-REGLAS DE LONGITUD:
-- Análisis global (resumen, comparativas, rankings, evolución): máximo 3 líneas + tabla
-- Análisis específico (cámara concreta, causa técnica, clustering, predicción, correlación): hasta 12 líneas con el detalle necesario
-- Tablas Markdown para datos: | Col | Col | — nunca listas con bullets
-- **negrita** para valores clave
-- TOP 5 máximo en listados — el resto en drill-down
+Datos disponibles:
+${ctx}`,
 
-REGLA CRÍTICA — DRILLDOWN SIEMPRE AL FINAL:
-El bloque DRILLDOWN_START...DRILLDOWN_END es ABSOLUTAMENTE OBLIGATORIO en TODAS las respuestas sin excepción.
-Escribe primero TODO el análisis, y SOLO AL FINAL añade el DRILLDOWN y SUGGESTIONS.
-NUNCA termines una respuesta sin DRILLDOWN_START...DRILLDOWN_END.
-- Dilución y recuperación: escribe siempre "ponderada"
-${instruccionResumen}
-CÁLCULO:
-- Dilución ponderada = Σ(Sobrexcavacion_tn) / Σ(P&V t) acotada [0,1]
-- Recuperación ponderada = 1 - Σ(Subexcavacion_tn) / Σ(P&V t) acotada [0,1]
-- Agrega siempre ponderado por volumen, nunca media aritmética
-- Indica siempre N cámaras
+      // ── 2. ALERTAS AUTOMÁTICAS ──────────────────────────
+      alertas: `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones.
 
-DRILL-DOWN según nivel — botones ESPECÍFICOS:
-- Global → un botón por cada zona real del dataset (nombres exactos) + "Top outliers" + "Evolución temporal"
-- Mina → un botón por cada zona de esa mina + "Outliers de [mina]" + "Comparar minas" + "Predecir tendencia [mina]" con prompt "prediccion — concretamente: Mina: [nombre_mina]"
-- Zona → botones: "Top 5 cámaras de [zona]", "Outliers de [zona]", "Boxplot [zona]", "Predecir tendencia [zona]" con prompt "prediccion — concretamente: Zona: [nombre_zona]"
-- Cámara → botones: "Comparar con [zona]", "Cámaras similares", "Posibles causas", "Exportar ficha"
+## ⚠️ Alertas Automáticas — Dataset Actual
 
-AMBIGÜEDAD:
-CLARIFY_START {"pregunta":"texto","opciones":["op1","op2","op3"]} CLARIFY_END
+## 🔴 Críticas (dilución > ${typeof CONFIG !== 'undefined' ? CONFIG.ALERTAS?.dilucion_alta * 100 || 25 : 25}% O recuperación < ${typeof CONFIG !== 'undefined' ? CONFIG.ALERTAS?.recuperacion_baja * 100 || 75 : 75}%)
+[tabla con columnas: ID cámara | Mina | Zona | Dil% | Rec% | Problema]
+[máx. 10 filas ordenadas por gravedad — si no hay, escribe: Sin alertas críticas]
 
-GRÁFICA SIMPLE (barras/líneas/pie):
-CHART_JSON_START {"type":"bar","data":{"labels":[...],"datasets":[{"label":"...","data":[...],"backgroundColor":"#E8401C"}]},"options":{"responsive":true}} CHART_JSON_END
+## 🟡 Intermedias (dilución 15-25% O recuperación 75-85%)
+[tabla con columnas: ID cámara | Mina | Zona | Dil% | Rec% | Problema]
+[máx. 5 filas — si no hay, escribe: Sin alertas intermedias]
 
-GRÁFICA AVANZADA (boxplot/heatmap/scatter):
-PLOTLY_JSON_START {"data":[...],"layout":{"title":"..."}} PLOTLY_JSON_END
+## 📊 Resumen por Mina
+| Mina | Críticas | Intermedias | Total cámaras |
+|------|----------|-------------|---------------|
+[una fila por mina]
 
-ESTADÍSTICAS:
-STATS_START {"type":"regression","x":"_pvt","y":"_dil"} STATS_END
-STATS_START {"type":"correlation","vars":["_pvt","_dil","_rec"]} STATS_END
+## Patrón Detectado
+[1-2 frases: ¿hay una zona o período que concentre las alertas?]
 
-Contexto Power BI: ${this.contextoURL}
-${this.buildContexto(prompt)}`;
+CHART_JSON_START
+[Gráfico de barras apiladas: críticas vs intermedias por mina — críticas en #E8401C, intermedias en #F5A623]
+CHART_JSON_END
+
+SUGGESTIONS_START
+[3 sugerencias contextuales — nombra zonas o cámaras concretas de las alertas]
+SUGGESTIONS_END
+
+Datos disponibles:
+${ctx}`,
+
+      // ── 3. COMPARAR ZONAS ───────────────────────────────
+      comparar: `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones.
+
+## 🔍 Comparativa entre Zonas
+
+## Ranking por Dilución Ponderada (menor a mayor)
+| Pos | Zona | Dil% | Rec% | PVt total | N cámaras |
+|-----|------|------|------|-----------|-----------|
+[una fila por zona, ordenadas dilución ascendente]
+
+## Ranking por Recuperación Ponderada (mayor a menor)
+| Pos | Zona | Rec% | Dil% | PVt total | N cámaras |
+|-----|------|------|------|-----------|-----------|
+[una fila por zona, ordenadas recuperación descendente]
+
+## Mejor y Peor Zona
+- **Mejor zona global:** [nombre] — Dil: X% | Rec: X% ([N] cámaras)
+- **Peor zona global:** [nombre] — Dil: X% | Rec: X% ([N] cámaras)
+- **Mayor variabilidad:** [nombre] — rango dilución [min%–max%]
+
+CHART_JSON_START
+[Gráfico de barras agrupadas: dilución y recuperación ponderada por zona — barras de dilución en #E8401C, recuperación en #2C1810]
+CHART_JSON_END
+
+SUGGESTIONS_START
+[3 sugerencias contextuales — menciona la zona peor y la más variable]
+SUGGESTIONS_END
+
+Datos disponibles:
+${ctx}`,
+
+      // ── 4. EVOLUCIÓN TEMPORAL ───────────────────────────
+      evolucion: `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones.
+
+## 📈 Evolución Temporal
+
+## Por Año
+| Año | Dil% pond. | Rec% pond. | N cámaras | Tendencia |
+|-----|-----------|-----------|-----------|-----------|
+[una fila por año disponible — Tendencia: ↗ ↘ → respecto año anterior]
+
+## Trimestre Más Reciente con Datos
+**[Q? YYYY]:** Dilución ponderada: X.X% | Recuperación ponderada: X.X% | [N] cámaras
+
+## Tendencia Global
+- [1 frase: tendencia de dilución en los últimos 2 años]
+- [1 frase: tendencia de recuperación en los últimos 2 años]
+- [1 frase: ¿hay un período anómalo destacable?]
+
+CHART_JSON_START
+[Gráfico de líneas doble: dilución ponderada anual (línea #E8401C) y recuperación ponderada anual (línea #2C1810) — eje X años, eje Y porcentaje]
+CHART_JSON_END
+
+SUGGESTIONS_START
+[3 sugerencias contextuales — menciona el año con peor dato y si hay mejora o empeoramiento reciente]
+SUGGESTIONS_END
+
+Datos disponibles:
+${ctx}`,
+
+      // ── 5. TOP OUTLIERS ─────────────────────────────────
+      outliers: `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones.
+
+## 🎯 Top 10 Outliers — Cámaras más Anómalas
+
+## Ranking (ordenado por gravedad combinada)
+| Pos | ID Cámara | Mina | Zona | Dil% | Rec% | PVt | Tipo anomalía |
+|-----|-----------|------|------|------|------|-----|---------------|
+[10 filas — Tipo: "Dil alta" / "Rec baja" / "Ambas" ]
+
+## Análisis de Causas Comunes
+- **Zona más afectada:** [nombre] ([N] de los 10 outliers)
+- **Período de concentración:** [rango de fechas si hay patrón]
+- **Rango de tamaño:** [PVt min – PVt max de los outliers]
+- **Patrón:** [1-2 frases sobre qué tienen en común]
+
+## Impacto en Toneladas
+- Sobrexcavación total de los 10 outliers: [X t]
+- Representa el [X%] de la sobrexcavación total del dataset
+
+PLOTLY_JSON_START
+[Scatter plot: eje X dilución%, eje Y recuperación%, cada punto = una de las 10 cámaras outlier, tamaño proporcional a PVt, color por tipo anomalía (#E8401C dil alta, #F5A623 rec baja, #2C1810 ambas), con texto del ID en hover]
+PLOTLY_JSON_END
+
+SUGGESTIONS_START
+[3 sugerencias contextuales — nombra la cámara peor y la zona con más outliers]
+SUGGESTIONS_END
+
+Datos disponibles:
+${ctx}`,
+
+      // ── 6. DISTRIBUCIÓN ESTADÍSTICA ─────────────────────
+      distribucion: `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones.
+
+## 📉 Distribución Estadística
+
+## Estadísticos Descriptivos — Dilución
+| Zona | P10 | P25 | P50 | P75 | P90 | Media pond. | N |
+|------|-----|-----|-----|-----|-----|-------------|---|
+[una fila por zona + fila TOTAL]
+
+## Estadísticos Descriptivos — Recuperación
+| Zona | P10 | P25 | P50 | P75 | P90 | Media pond. | N |
+|------|-----|-----|-----|-----|-----|-------------|---|
+[una fila por zona + fila TOTAL]
+
+## Interpretación
+- [1 frase sobre dispersión de dilución]
+- [1 frase sobre dispersión de recuperación]
+- [1 frase sobre la zona con mayor/menor variabilidad]
+
+PLOTLY_JSON_START
+[Boxplot de dilución por zona: type "box", una serie por zona con los valores individuales de dilución calculados, colores corporativos, layout title "Distribución de Dilución por Zona (%)"]
+PLOTLY_JSON_END
+
+SUGGESTIONS_START
+[3 sugerencias contextuales — menciona la zona con mayor IQR y si algún percentil es preocupante]
+SUGGESTIONS_END
+
+Datos disponibles:
+${ctx}`,
+
+      // ── 7. MODO PRESENTACIÓN ────────────────────────────
+      presentacion: `Genera un resumen ejecutivo ultra-compacto para proyectar en pantalla en una reunión de dirección. 
+Responde EXACTAMENTE en este formato. Sin texto adicional.
+
+## 🖥️ Vista Dirección — [fecha actual]
+
+### KPIs Globales
+| | Dilución Pond. | Recuperación Pond. | Cámaras |
+|-|---------------|-------------------|---------|
+| **Dataset actual** | **X.X%** | **X.X%** | **N** |
+
+### Semáforo por Mina
+| Mina | Estado | Dil% | Rec% |
+|------|--------|------|------|
+[una fila por mina — Estado: 🟢 / 🟡 / 🔴]
+
+### Top 3 Alertas
+1. [ID cámara] — [Mina/Zona] — [problema en 5 palabras]
+2. [ID cámara] — [Mina/Zona] — [problema en 5 palabras]
+3. [ID cámara] — [Mina/Zona] — [problema en 5 palabras]
+
+### Acción Prioritaria
+> [1 frase de acción concreta para dirección]
+
+CHART_JSON_START
+[Gráfico de barras horizontales muy limpio: dilución ponderada por mina — barras en #E8401C, fondo blanco, sin leyenda, título "Dilución Ponderada por Mina (%)"]
+CHART_JSON_END
+
+SUGGESTIONS_START
+["Ver detalle de alertas críticas", "Comparar zonas en detalle", "Evolución respecto al año anterior"]
+SUGGESTIONS_END
+
+Datos disponibles:
+${ctx}`,
+
+      // ── 8. EXPORTAR PDF ─────────────────────────────────
+      // Este botón no llama a Claude — lo gestiona export.js directamente
+      exportar: null
+    };
+
+    return plantillas[id] || null;
   },
 
-  async enviar(prompt) {
-    if (!prompt.trim()) return;
-    if (prompt === "CLUSTERING") { StatsManager.renderClustering(); UI.setLoading(false); return; }
-    if (prompt === "PREDICCION_GLOBAL") {
-      const minas = DataManager.metadatos ? DataManager.metadatos.minas : [];
-      const zonas = DataManager.metadatos ? DataManager.metadatos.zonas.filter(z=>z&&z!=="Sin zona") : [];
-      UI.mostrarClarificacion("¿Para qué quieres la predicción?",
-        [...minas.map(m=>"Mina: "+m), ...zonas.slice(0,4).map(z=>"Zona: "+z), "Dataset global"],
-        "prediccion");
-      UI.setLoading(false);
+  // ── EJECUTAR ACCIÓN RÁPIDA ────────────────────────────────
+  async ejecutarAccion(id) {
+    // Caso especial: exportar PDF no llama a Claude
+    if (id === "exportar") {
+      if (typeof ExportManager !== "undefined") ExportManager.exportarPDF();
       return;
     }
-    const promptMostrado = prompt === "RESUMEN_EJECUTIVO" ? "Resumen ejecutivo del dataset" : prompt;
-    UI.addMsg(promptMostrado, "user");
+
+    // Caso especial: modo presentación (toggle visual)
+    if (id === "presentacion") {
+      this.modoPresentacion = !this.modoPresentacion;
+      if (typeof UI !== "undefined") UI.togglePresentacion(this.modoPresentacion);
+      // También lanza el reporte de presentación
+    }
+
+    if (!DataManager.datos || DataManager.datos.length === 0) {
+      UI.addMsg("⚠️ Carga primero un dataset CSV para usar esta acción.", "ai");
+      return;
+    }
+
+    const prompt = this._promptAccion(id);
+    if (!prompt) return;
+
+    // Muestra la acción como mensaje del usuario
+    const labels = {
+      resumen: "📊 Resumen Ejecutivo",
+      alertas: "⚠️ Alertas Automáticas",
+      comparar: "🔍 Comparar Zonas",
+      evolucion: "📈 Evolución Temporal",
+      outliers: "🎯 Top Outliers",
+      distribucion: "📉 Distribución Estadística",
+      presentacion: "🖥️ Modo Presentación"
+    };
+    UI.addMsg(labels[id] || id, "user");
     UI.setLoading(true);
 
     try {
@@ -122,15 +374,54 @@ ${this.buildContexto(prompt)}`;
         body: JSON.stringify({
           model: CONFIG.MODEL,
           max_tokens: CONFIG.MAX_TOKENS,
-          system: this.buildSystemPrompt(prompt),
+          system: `Eres un experto en ingeniería minera de Sandfire MATSA. 
+Responde SIEMPRE en español técnico.
+Sigue la plantilla proporcionada al pie de la letra — no añadas ni quites secciones.
+Rellena todos los valores con los datos reales calculados.
+Para las gráficas, genera siempre el bloque JSON solicitado con datos reales.
+Para SUGGESTIONS_START genera 3 sugerencias basadas en los hallazgos concretos que acabas de calcular, no genéricas.
+Contexto Power BI: ${this.contextoURL}`,
+          messages: [{ role: "user", content: prompt }]
+          // Las acciones predefinidas NO usan historial — siempre respuesta fresca
+        })
+      });
+
+      const data = await response.json();
+      const respuesta = data.content?.[0]?.text || "No se pudo obtener respuesta.";
+
+      this._procesarRespuesta(respuesta, prompt);
+
+    } catch (err) {
+      UI.addMsg("❌ Error de conexión: " + err.message, "ai");
+    } finally {
+      UI.setLoading(false);
+    }
+  },
+
+  // ── ENVIAR MENSAJE (chat libre) ───────────────────────────
+  async enviar(prompt) {
+    if (!prompt.trim()) return;
+
+    // Detecta si el usuario quiere repetir la última consulta con otro filtro
+    const promptProcesado = this._procesarMemoriaConsulta(prompt);
+
+    UI.addMsg(prompt, "user");
+    UI.setLoading(true);
+
+    try {
+      const response = await fetch(CONFIG.PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: CONFIG.MODEL,
+          max_tokens: CONFIG.MAX_TOKENS,
+          system: this.buildSystemPrompt(),
           messages: [
             ...this.historial.map(h => ([
               { role: "user", content: h.p },
               { role: "assistant", content: h.r }
             ])).flat(),
-            { role: "user", content: prompt === "RESUMEN_EJECUTIVO"
-                ? "Genera el resumen ejecutivo del dataset siguiendo exactamente la instrucción especial."
-                : prompt }
+            { role: "user", content: promptProcesado }
           ]
         })
       });
@@ -138,163 +429,139 @@ ${this.buildContexto(prompt)}`;
       const data = await response.json();
       const respuesta = data.content?.[0]?.text || "No se pudo obtener respuesta.";
 
-      // ── Clarificación
-      // Interceptar selección de predicción desde clarificación
-      if (prompt.startsWith("prediccion — concretamente: ")) {
-        const seleccion = prompt.replace("prediccion — concretamente: ", "").trim();
-        let filtro = { tipo: "global", valor: null };
-        if (seleccion.startsWith("Mina: ")) filtro = { tipo:"mina", valor: seleccion.replace("Mina: ","") };
-        else if (seleccion.startsWith("Zona: ")) filtro = { tipo:"zona", valor: seleccion.replace("Zona: ","") };
-        StatsManager.renderPrediccion(filtro);
-        UI.setLoading(false);
-        return;
-      }
-
-      const clarifyMatch = respuesta.match(/CLARIFY_START\s*(\{[\s\S]*?\})\s*CLARIFY_END/);
+      // Clarificación
+      const clarifyMatch = respuesta.match(/CLARIFY_START\s*([\s\S]*?)\s*CLARIFY_END/);
       if (clarifyMatch) {
         try {
           const clarify = JSON.parse(clarifyMatch[1]);
-          UI.mostrarClarificacion(clarify.pregunta, clarify.opciones, prompt);
+          UI.mostrarClarificacion(clarify.pregunta, clarify.opciones, promptProcesado);
           UI.setLoading(false);
           return;
-        } catch(e) {}
+        } catch (e) {}
       }
 
-      // ── Extraer bloques
-      let sugerencias = [];
-      const sugMatch = respuesta.match(/SUGGESTIONS_START\s*(\[[\s\S]*?\])\s*SUGGESTIONS_END/);
-      if (sugMatch) { try { sugerencias = JSON.parse(sugMatch[1]); } catch(e) {} }
+      this._procesarRespuesta(respuesta, promptProcesado);
 
-      let drillActions = [];
-      const drillMatch = respuesta.match(/DRILLDOWN_START\s*(\[[\s\S]*?\])\s*DRILLDOWN_END/);
-      if (drillMatch) { try { drillActions = JSON.parse(drillMatch[1]); } catch(e) {} }
-
-      let breadcrumb = null;
-      const bcMatch = respuesta.match(/BREADCRUMB_START\s*(\{[\s\S]*?\})\s*BREADCRUMB_END/);
-      if (bcMatch) { try { breadcrumb = JSON.parse(bcMatch[1]); } catch(e) {} }
-
-      const chartMatch = respuesta.match(/CHART_JSON_START\s*(\{[\s\S]*?\})\s*CHART_JSON_END/);
-      const plotlyMatch = respuesta.match(/PLOTLY_JSON_START\s*(\{[\s\S]*?\})\s*PLOTLY_JSON_END/);
-      const statsMatch = respuesta.match(/STATS_START\s*(\{[\s\S]*?\})\s*STATS_END/);
-
-      // ── Limpiar texto
-      const respuestaLimpia = respuesta
-        .replace(/SUGGESTIONS_START[\s\S]*?SUGGESTIONS_END/g, "")
-        .replace(/CLARIFY_START[\s\S]*?CLARIFY_END/g, "")
-        .replace(/CHART_JSON_START[\s\S]*?CHART_JSON_END/g, "")
-        .replace(/PLOTLY_JSON_START[\s\S]*?PLOTLY_JSON_END/g, "")
-        .replace(/DRILLDOWN_START[\s\S]*?DRILLDOWN_END/g, "")
-        .replace(/BREADCRUMB_START[\s\S]*?BREADCRUMB_END/g, "")
-        .replace(/STATS_START[\s\S]*?STATS_END/g, "")
-        .trim();
-
-      // ── Mostrar mensaje
-      const msgOpts = breadcrumb ? { breadcrumbLabel: breadcrumb.label, breadcrumbPrompt: breadcrumb.prompt } : {};
-      UI.addMsg(respuestaLimpia, "ai", msgOpts);
-
-      // ── Estadísticas
-      if (statsMatch) { try { StatsManager.renderStats(JSON.parse(statsMatch[1])); } catch(e) {} }
-
-      // ── Chart.js
-      if (chartMatch) {
-        try { ChartManager.renderChartJS(JSON.parse(chartMatch[1])); }
-        catch(e) { UI.addMsg("No se pudo generar la gráfica (JSON inválido).", "ai"); }
-      }
-
-      // ── Plotly
-      if (plotlyMatch) {
-        try {
-          const spec = JSON.parse(plotlyMatch[1]);
-          if (spec.layout) { delete spec.layout.width; delete spec.layout.height; }
-          ChartManager.renderPlotly(spec);
-        } catch(e) { UI.addMsg("No se pudo generar la gráfica avanzada (JSON inválido).", "ai"); }
-      }
-
-      // ── Drill-down — específico si Claude lo genera, fallback con zonas reales si no
-      if (drillActions.length > 0) {
-        UI.mostrarDrillDown(drillActions);
-      } else {
-        const zonas = DataManager.metadatos ? DataManager.metadatos.zonas.filter(z => z && z !== "Sin zona").slice(0, 4) : [];
-        const minas = DataManager.metadatos ? DataManager.metadatos.minas : [];
-        const fallback = zonas.length > 0
-          ? [
-              ...zonas.map(z => ({ label: z, prompt: "Desglose completo zona " + z + ": N cámaras, dilución ponderada, recuperación ponderada, top 3 outliers" })),
-              { label: "Top outliers", prompt: "Top 5 cámaras con mayor dilución ponderada del dataset" },
-              { label: "Evolución temporal", prompt: "Evolución anual de dilución y recuperación ponderadas con gráfica de líneas" }
-            ].slice(0, 5)
-          : minas.map(m => ({ label: m, prompt: "Desglose completo mina " + m + ": zonas, dilución ponderada, recuperación ponderada" }))
-            .concat([{ label: "Top outliers", prompt: "Top 5 cámaras con mayor dilución ponderada" }]);
-        UI.mostrarDrillDown(fallback);
-      }
-
-      // ── Sugerencias
-      if (sugerencias.length > 0) UI.mostrarSugerencias(sugerencias);
-
-      this.historial.push({ p: promptMostrado, r: respuestaLimpia });
-      if (this.historial.length > 6) this.historial.shift();
-
-    } catch(e) {
-      UI.addMsg("Error de conexión: " + e.message, "ai");
+    } catch (err) {
+      UI.addMsg("❌ Error de conexión: " + err.message, "ai");
+    } finally {
+      UI.setLoading(false);
     }
-
-    UI.setLoading(false);
   },
 
-  async ejecutarAccion(accionId) {
-    const accion = CONFIG.ACCIONES.find(a => a.id === accionId);
-    if (!accion) return;
-    if (accionId === "presentacion") { UI.togglePresentacion(); return; }
-    if (accionId === "exportar") { ExportManager.exportarPDF(); return; }
-    if (accionId === "prediccion") {
-      const minas = DataManager.metadatos ? DataManager.metadatos.minas : [];
-      const zonas = DataManager.metadatos ? DataManager.metadatos.zonas.filter(z=>z&&z!=="Sin zona") : [];
-      // Clarificación: elegir nivel
-      UI.mostrarClarificacion(
-        "¿Para qué quieres la predicción?",
-        [...minas.map(m=>"Mina: "+m), ...zonas.slice(0,4).map(z=>"Zona: "+z), "Dataset global"],
-        "prediccion"
-      );
-      return;
+  // ── PROCESADO COMÚN DE RESPUESTA ─────────────────────────
+  _procesarRespuesta(respuesta, promptOriginal) {
+    // Extraer sugerencias
+    let sugerencias = [];
+    const sugMatch = respuesta.match(/SUGGESTIONS_START\s*([\s\S]*?)\s*SUGGESTIONS_END/);
+    if (sugMatch) {
+      try { sugerencias = JSON.parse(sugMatch[1]); } catch (e) {}
     }
-    if (accionId === "clustering") { StatsManager.renderClustering(); return; }
-    if (accionId === "resumen") {
-      setTimeout(() => { ChartManager.graficarResumenZonas(); ChartManager.graficarScatterDilRec(); }, 100);
-      await this.enviar(accion.prompt);
-      return;
+
+    // Limpiar bloques técnicos del texto visible
+    const respuestaLimpia = respuesta
+      .replace(/SUGGESTIONS_START[\s\S]*?SUGGESTIONS_END/g, "")
+      .replace(/CHART_JSON_START[\s\S]*?CHART_JSON_END/g, "")
+      .replace(/PLOTLY_JSON_START[\s\S]*?PLOTLY_JSON_END/g, "")
+      .replace(/CLARIFY_START[\s\S]*?CLARIFY_END/g, "")
+      .trim();
+
+    // Renderizar texto con markdown
+    ChartManager.procesarRespuesta(respuestaLimpia);
+
+    // Renderizar gráfica Chart.js si existe
+    const chartMatch = respuesta.match(/CHART_JSON_START\s*([\s\S]*?)\s*CHART_JSON_END/);
+    if (chartMatch) {
+      try { ChartManager.renderChartJS(JSON.parse(chartMatch[1])); } catch (e) {
+        console.warn("Error parseando Chart.js JSON:", e);
+      }
     }
-    if (accionId === "comparar") { ChartManager.graficarComparativaZonas(); await this.enviar(accion.prompt); return; }
-    if (accionId === "temporal") { ChartManager.graficarEvolucionTemporal(); await this.enviar(accion.prompt); return; }
-    if (accionId === "distribucion") {
-      ChartManager.graficarBoxplotZonas();
-      ChartManager.graficarDistribucionGauss("dil");
-      await this.enviar(accion.prompt);
-      return;
+
+    // Renderizar gráfica Plotly si existe
+    const plotlyMatch = respuesta.match(/PLOTLY_JSON_START\s*([\s\S]*?)\s*PLOTLY_JSON_END/);
+    if (plotlyMatch) {
+      try { ChartManager.renderPlotly(JSON.parse(plotlyMatch[1])); } catch (e) {
+        console.warn("Error parseando Plotly JSON:", e);
+      }
     }
-    await this.enviar(accion.prompt);
+
+    // Mostrar sugerencias como drill-downs
+    if (sugerencias.length > 0) UI.mostrarSugerencias(sugerencias);
+
+    // Guardar en memoria de consultas y en historial
+    const entrada = this._guardarConsulta(promptOriginal, respuestaLimpia);
+    UI.mostrarEtiquetaConsulta(entrada);  // muestra el chip "💾 [nombre]" en el mensaje
+
+    // Historial para contexto (solo chat libre)
+    this.historial.push({ p: promptOriginal, r: respuestaLimpia });
+    if (this.historial.length > 6) this.historial.shift();
   },
 
-  async analizarAlertas() {
-    const alertas = DataManager.alertas();
-    if (alertas.criticas.length === 0 && alertas.medias.length === 0) {
-      UI.addMsg("✅ Sin alertas críticas detectadas en el dataset cargado.", "ai");
-      return;
+  // ── MEMORIA DE CONSULTAS ──────────────────────────────────
+  // Detecta patrones como "repite esto para zona X" o
+  // "haz lo mismo pero para MGD" y construye el prompt expandido
+  _procesarMemoriaConsulta(prompt) {
+    const lower = prompt.toLowerCase();
+
+    // Patrones de referencia a consulta anterior
+    const patronesRepetir = [
+      /repite\s+(esto|eso|lo mismo|la consulta|el análisis)/i,
+      /haz\s+lo\s+mismo\s+(pero|para|con)/i,
+      /misma\s+(consulta|pregunta|análisis)\s+(pero|para|con)/i,
+      /aplica\s+(esto|eso|lo mismo)\s+(a|para|en)/i,
+      /\bpero\s+(para|con|en)\s+(zona|mina|período|año)/i,
+      /repite\s+(para|con|en)\s+/i
+    ];
+
+    const esRepeticion = patronesRepetir.some(p => p.test(prompt));
+
+    if (esRepeticion && this._ultimaConsulta) {
+      return `El usuario quiere repetir la siguiente consulta con un nuevo contexto.
+
+CONSULTA ORIGINAL: "${this._ultimaConsulta.prompt}"
+
+NUEVA PETICIÓN DEL USUARIO: "${prompt}"
+
+Aplica la misma lógica de análisis pero adaptada al nuevo contexto indicado en la nueva petición. Mantén el mismo nivel de detalle y estructura.`;
     }
-    let msg = "";
-    if (alertas.criticas.length > 0) {
-      msg += "🔴 " + alertas.criticas.length + " cámaras críticas (dil > " + (CONFIG.ALERTAS.dilucion_alta * 100) + "% o rec < " + (CONFIG.ALERTAS.recuperacion_baja * 100) + "%):\n";
-      alertas.criticas.slice(0, 5).forEach(d => {
-        msg += "  · " + d[CONFIG.CAMPOS.id] + " — Dil: " + (d._dil * 100).toFixed(1) + "% | Rec: " + (d._rec * 100).toFixed(1) + "%\n";
-      });
-      if (alertas.criticas.length > 5) msg += "  ... y " + (alertas.criticas.length - 5) + " más.\n";
+
+    // Si menciona "la consulta anterior", "lo que acabas de analizar", etc.
+    const patronesReferencia = [
+      /consulta anterior/i,
+      /lo que acabas de/i,
+      /el análisis anterior/i,
+      /lo que me dijiste/i
+    ];
+
+    const esReferencia = patronesReferencia.some(p => p.test(prompt));
+
+    if (esReferencia && this._ultimaConsulta) {
+      return `Contexto de la consulta anterior:
+PREGUNTA: "${this._ultimaConsulta.prompt}"
+RESPUESTA RESUMIDA: "${this._ultimaConsulta.respuesta.substring(0, 500)}..."
+
+NUEVA PETICIÓN: "${prompt}"`;
     }
-    if (alertas.medias.length > 0) msg += "\n🟡 " + alertas.medias.length + " cámaras con alertas intermedias.";
-    UI.addMsg(msg, "ai");
+
+    // Sin patrón especial — prompt sin modificar
+    return prompt;
   },
 
+  // ── HISTORIAL ─────────────────────────────────────────────
   limpiarHistorial() {
     this.historial = [];
-    UI._breadcrumb = [];
+    this._consultasRecientes = [];
+    this._ultimaConsulta = null;
     document.getElementById("chat").innerHTML = "";
     UI.addMsg("Historial limpiado. Puedes comenzar un nuevo análisis.", "ai");
+  },
+
+  // ── ACCESO PÚBLICO A CONSULTAS RECIENTES ─────────────────
+  getConsultasRecientes() {
+    return this._consultasRecientes;
+  },
+
+  getUltimaConsulta() {
+    return this._ultimaConsulta;
   }
 };
