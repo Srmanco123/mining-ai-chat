@@ -51,18 +51,23 @@ FORMATO OBLIGATORIO — sigue este orden exacto en TODAS las respuestas:
 
 BREADCRUMB_START {"label":"nivel actual","prompt":"prompt para regenerar"} BREADCRUMB_END
 
-[máximo 3 líneas de texto + tabla Markdown si hay datos tabulares]
+[análisis técnico — ver reglas de longitud abajo]
 
 DRILLDOWN_START [{"label":"Botón 1","prompt":"prompt 1"},{"label":"Botón 2","prompt":"prompt 2"},{"label":"Botón 3","prompt":"prompt 3"}] DRILLDOWN_END
 
 SUGGESTIONS_START ["sugerencia 1","sugerencia 2","sugerencia 3"] SUGGESTIONS_END
 
-REGLAS ESTRICTAS:
-- Máximo 3 líneas narrativas — el detalle va en los botones drill-down
+REGLAS DE LONGITUD:
+- Análisis global (resumen, comparativas, rankings, evolución): máximo 3 líneas + tabla
+- Análisis específico (cámara concreta, causa técnica, clustering, predicción, correlación): hasta 12 líneas con el detalle necesario
 - Tablas Markdown para datos: | Col | Col | — nunca listas con bullets
 - **negrita** para valores clave
-- TOP 5 máximo si hay muchos elementos — el resto en drill-down
-- DRILLDOWN_START...DRILLDOWN_END es OBLIGATORIO siempre, con botones ESPECÍFICOS al contenido
+- TOP 5 máximo en listados — el resto en drill-down
+
+REGLA CRÍTICA — DRILLDOWN SIEMPRE AL FINAL:
+El bloque DRILLDOWN_START...DRILLDOWN_END es ABSOLUTAMENTE OBLIGATORIO en TODAS las respuestas sin excepción.
+Escribe primero TODO el análisis, y SOLO AL FINAL añade el DRILLDOWN y SUGGESTIONS.
+NUNCA termines una respuesta sin DRILLDOWN_START...DRILLDOWN_END.
 - Dilución y recuperación: escribe siempre "ponderada"
 ${instruccionResumen}
 CÁLCULO:
