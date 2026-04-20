@@ -34,6 +34,7 @@
     <button class="btn-header" id="btn-cargar" onclick="document.getElementById('file-input').click()">📂 Cargar datos</button>
     <button class="btn-header" onclick="ExportManager.exportarTXT()">📝 Exportar TXT</button>
     <button class="btn-header" onclick="ExportManager.exportarPDF()">📄 Exportar PDF</button>
+    <button class="btn-header" id="btn-indice-toggle" onclick="UI.toggleIndice()" title="Índice de sesión">☰ Índice</button>
     <button class="btn-header" onclick="ChatManager.limpiarHistorial()">🗑️ Limpiar</button>
     <input type="file" id="file-input" accept=".csv" onchange="App.cargarCSV(event)">
   </div>
@@ -45,12 +46,6 @@
 <!-- ── BOTONERA DE ACCIONES ── -->
 <div id="botonera"></div>
 
-<!-- ── BOTÓN ÍNDICE (junto a botonera) ── -->
-<div id="indice-toggle-bar">
-  <button id="btn-indice-toggle" onclick="UI.toggleIndice()" title="Mostrar/ocultar índice de sesión">
-    ☰ Índice
-  </button>
-</div>
 
 <!-- ── LAYOUT PRINCIPAL: chat + panel lateral ── -->
 <div id="main-layout">
