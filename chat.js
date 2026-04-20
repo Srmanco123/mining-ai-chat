@@ -96,7 +96,7 @@ SUGGESTIONS_END`;
     const plantillas = {
 
       // ── 1. RESUMEN EJECUTIVO ────────────────────────────
-      resumen: `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones. No escribas texto fuera de las secciones.
+      resumen: `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones. No escribas texto fuera de las secciones marcadas.
 
 ## 📊 Resumen Ejecutivo
 **Dataset:** [N cámaras] | [minas presentes] | Período: [fecha_min] – [fecha_max]
@@ -109,13 +109,18 @@ SUGGESTIONS_END`;
 | Outliers dilución (>P75) | N | — |
 | Outliers recuperación (<P25) | N | — |
 
-## Por Zona (top 5 por volumen PVt)
-| Zona | Dil% | Rec% | Cámaras | Estado |
-|------|------|------|---------|--------|
-[máx. 5 filas — Estado: ✅ Normal / ⚠️ Atención / 🔴 Crítico]
+## Por Zona (todas las zonas, ordenadas por PVt descendente)
+| Zona | Dil% | Rec% | Cámaras | PVt (t) | Estado |
+|------|------|------|---------|---------|--------|
+[una fila por zona — Estado: ✅ Normal / ⚠️ Atención / 🔴 Crítico]
+
+## Por Mina
+| Mina | Dil% | Rec% | Cámaras | PVt (t) | Estado |
+|------|------|------|---------|---------|--------|
+[una fila por mina — Estado: ✅ Normal / ⚠️ Atención / 🔴 Crítico]
 
 ## ⚠️ Alertas Críticas
-[lista de máx. 3 cámaras: · ID — Dil: X% | Rec: X%]
+[lista de máx. 5 cámaras: · ID [Mina/Zona] — Dil: X% | Rec: X%]
 [Si no hay alertas escribe: · Sin alertas críticas en el dataset actual]
 
 ## 💡 Recomendaciones
@@ -123,16 +128,43 @@ SUGGESTIONS_END`;
 2. [acción concreta con zona/cámara específica]
 3. [acción concreta si procede]
 
+PLOTLY_JSON_START
+{"data":[SUSTITUYE_AQUI_UN_TRACE_POR_CAMARA],"layout":{"title":"Dispersión Dilución vs Recuperación por Cámara","xaxis":{"title":"Recuperación (%)","range":[0,100]},"yaxis":{"title":"Dilución (%)","range":[0,100]},"height":320,"margin":{"t":40,"b":50,"l":50,"r":20}}}
+PLOTLY_JSON_END
+
+INSTRUCCIÓN GRÁFICA 1 — Scatter por cámara:
+Genera el bloque PLOTLY_JSON_START/END con un scatter plot donde:
+- Cada punto = una cámara individual
+- x = recuperación de esa cámara * 100
+- y = dilución de esa cámara * 100
+- marker.color: "#E8401C" si dil>P75 o rec<P25, "#2C1810" si ambas, "#7a7a7a" si normal
+- marker.size: proporcional a PVt (min 5, max 18) — usa Math.sqrt(pvt/max_pvt)*13+5
+- text: ID de cámara (para hover)
+- mode: "markers"
+- type: "scatter"
+JSON válido, sin funciones JS, arrays reales con los datos calculados.
+
 CHART_JSON_START
-[Genera un gráfico de barras horizontales: dilución ponderada por zona, colores #E8401C para valores >15% y #2C1810 para el resto]
+{"type":"bar","data":{"labels":["zona1","zona2"],"datasets":[{"label":"Dilución (%)","data":[X,X],"backgroundColor":"#E8401C"},{"label":"Recuperación (%)","data":[X,X],"backgroundColor":"#2C1810"}]},"options":{"responsive":true,"plugins":{"title":{"display":true,"text":"Dilución y Recuperación por Zona (%)"}},"scales":{"y":{"beginAtZero":true,"max":100}}}}
 CHART_JSON_END
 
+INSTRUCCIÓN GRÁFICA 2 — Barras por zona:
+Sustituye labels y data con los valores reales ponderados por zona.
+Barras agrupadas: dilución en #E8401C, recuperación en #2C1810.
+
+CHART_JSON_START
+{"type":"bar","data":{"labels":["mina1","mina2"],"datasets":[{"label":"Dilución (%)","data":[X,X],"backgroundColor":"#E8401C"},{"label":"Recuperación (%)","data":[X,X],"backgroundColor":"#2C1810"}]},"options":{"responsive":true,"plugins":{"title":{"display":true,"text":"Dilución y Recuperación por Mina (%)"}},"scales":{"y":{"beginAtZero":true,"max":100}}}}
+CHART_JSON_END
+
+INSTRUCCIÓN GRÁFICA 3 — Barras por mina:
+Sustituye labels y data con los valores reales ponderados por mina.
+
 SUGGESTIONS_START
-[3 sugerencias contextuales basadas en los datos reales que acabas de calcular — ej. si una zona tiene dilución muy alta, sugiere analizarla en detalle]
+[3 sugerencias contextuales basadas en los hallazgos concretos — menciona zonas o cámaras reales]
 SUGGESTIONS_END
 
 Datos disponibles:
-${ctx}`,
+\${ctx}`,
 
       // ── 2. ALERTAS AUTOMÁTICAS ──────────────────────────
       alertas: `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones.
@@ -466,27 +498,28 @@ Contexto Power BI: ${this.contextoURL}`,
       .replace(/CHART_JSON_START[\s\S]*?CHART_JSON_END/g, "")
       .replace(/PLOTLY_JSON_START[\s\S]*?PLOTLY_JSON_END/g, "")
       .replace(/CLARIFY_START[\s\S]*?CLARIFY_END/g, "")
+      .replace(/INSTRUCCIÓN GRÁFICA[^\n]*\n[\s\S]*?(?=\n##|\nSUGGESTIONS|\nCHART|\nPLOTLY|$)/g, "")
       .trim();
 
     // Renderizar texto con markdown — registrar en índice
     const tituloIndice = promptOriginal.length > 35 ? promptOriginal.substring(0, 32) + "…" : promptOriginal;
     ChartManager.procesarRespuestaConIndice(respuestaLimpia, tituloIndice);
 
-    // Renderizar gráfica Chart.js si existe
-    const chartMatch = respuesta.match(/CHART_JSON_START\s*([\s\S]*?)\s*CHART_JSON_END/);
-    if (chartMatch) {
-      try { ChartManager.renderChartJS(JSON.parse(chartMatch[1])); } catch (e) {
-        console.warn("Error parseando Chart.js JSON:", e);
-      }
-    }
-
-    // Renderizar gráfica Plotly si existe
-    const plotlyMatch = respuesta.match(/PLOTLY_JSON_START\s*([\s\S]*?)\s*PLOTLY_JSON_END/);
-    if (plotlyMatch) {
-      try { ChartManager.renderPlotly(JSON.parse(plotlyMatch[1])); } catch (e) {
+    // Renderizar TODAS las gráficas Plotly (puede haber varias)
+    const plotlyMatches = [...respuesta.matchAll(/PLOTLY_JSON_START\s*([\s\S]*?)\s*PLOTLY_JSON_END/g)];
+    plotlyMatches.forEach(m => {
+      try { ChartManager.renderPlotly(JSON.parse(m[1])); } catch (e) {
         console.warn("Error parseando Plotly JSON:", e);
       }
-    }
+    });
+
+    // Renderizar TODAS las gráficas Chart.js (puede haber varias)
+    const chartMatches = [...respuesta.matchAll(/CHART_JSON_START\s*([\s\S]*?)\s*CHART_JSON_END/g)];
+    chartMatches.forEach(m => {
+      try { ChartManager.renderChartJS(JSON.parse(m[1])); } catch (e) {
+        console.warn("Error parseando Chart.js JSON:", e);
+      }
+    });
 
     // Mostrar sugerencias como drill-downs
     if (sugerencias.length > 0) UI.mostrarSugerencias(sugerencias);
