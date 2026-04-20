@@ -45,6 +45,16 @@
 <!-- ── BOTONERA DE ACCIONES ── -->
 <div id="botonera"></div>
 
+<!-- ── BOTÓN ÍNDICE (junto a botonera) ── -->
+<div id="indice-toggle-bar">
+  <button id="btn-indice-toggle" onclick="UI.toggleIndice()" title="Mostrar/ocultar índice de sesión">
+    ☰ Índice
+  </button>
+</div>
+
+<!-- ── LAYOUT PRINCIPAL: chat + panel lateral ── -->
+<div id="main-layout">
+
 <!-- ── CHAT ── -->
 <div id="chat">
   <div class="msg ai" style="border-left:3px solid #E8401C;">
@@ -54,6 +64,17 @@
     </div>
   </div>
 </div>
+
+  <!-- ── PANEL ÍNDICE LATERAL ── -->
+  <div id="indice-panel" class="indice-cerrado">
+    <div class="indice-header">
+      <span class="indice-titulo">Índice de sesión</span>
+      <span id="indice-contador" class="indice-contador">0 entradas</span>
+    </div>
+    <div id="indice-lista"></div>
+  </div>
+
+</div><!-- fin main-layout -->
 
 <!-- ── INPUT ── -->
 <div id="input-area">
