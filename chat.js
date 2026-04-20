@@ -463,64 +463,107 @@ ${ctx}`;
 
   // ── GRÁFICAS DEL RESUMEN — 100% JS, sin Claude ───────────
   _renderGraficasResumen() {
-    const datos  = DataManager.datos;
-    const zonas  = DataManager.porZona();
-    const minas  = DataManager.porMina();
-    const m      = DataManager.metadatos;
+    const datos = DataManager.datos;
+    const m     = DataManager.metadatos;
 
-    // Scatter: una cámara = un punto
+    // ── SCATTER: una cámara = un punto ───────────────────────
     const maxPvt = Math.max(...datos.map(d => d._pvt), 1);
     const colores = datos.map(d => {
       const dilAlta = d._dil > m.dil_p75;
       const recBaja = d._rec < m.rec_p25;
       if (dilAlta && recBaja) return "#2C1810";
-      if (dilAlta) return "#E8401C";
-      if (recBaja) return "#F5A623";
+      if (dilAlta)            return "#E8401C";
+      if (recBaja)            return "#F5A623";
       return "#7a7a7a";
     });
-    const tamaños = datos.map(d => Math.sqrt(d._pvt / maxPvt) * 13 + 5);
+    const tamanios = datos.map(d => Math.sqrt(d._pvt / maxPvt) * 13 + 5);
 
     ChartManager.renderPlotly({
       data: [{
         type: "scatter",
         mode: "markers",
-        x: datos.map(d => d._rec * 100),
-        y: datos.map(d => d._dil * 100),
-        text: datos.map(d => d[CONFIG.CAMPOS.id] + "<br>" + (d[CONFIG.CAMPOS.zona] || "") + " — Dil:" + (d._dil*100).toFixed(1) + "% Rec:" + (d._rec*100).toFixed(1) + "%"),
+        x: datos.map(d => +(d._rec * 100).toFixed(1)),
+        y: datos.map(d => +(d._dil * 100).toFixed(1)),
+        text: datos.map(d =>
+          (d[CONFIG.CAMPOS.id] || "—") + "<br>" +
+          (d[CONFIG.CAMPOS.zona] || "") + " [" + (d[CONFIG.CAMPOS.mina] || "") + "]" +
+          "<br>Dil: " + (d._dil*100).toFixed(1) + "% | Rec: " + (d._rec*100).toFixed(1) + "%" +
+          "<br>PVt: " + d._pvt.toFixed(0) + " t"
+        ),
         hoverinfo: "text",
-        marker: { color: colores, size: tamaños, opacity: 0.8, line: { width: 0.5, color: "#fff" } }
+        marker: { color: colores, size: tamanios, opacity: 0.85, line: { width: 0.5, color: "#fff" } }
       }],
       layout: {
         title: "Dispersión Dilución vs Recuperación (" + datos.length + " cámaras)",
-        xaxis: { title: "Recuperación (%)", range: [0, 105] },
-        yaxis: { title: "Dilución (%)", range: [0, Math.min(105, Math.max(...datos.map(d => d._dil*100)) * 1.1 + 5)] }
+        xaxis: { title: "Recuperación (%)", range: [0, 102], dtick: 10 },
+        yaxis: { title: "Dilución (%)",     range: [0, Math.max(5, Math.ceil(Math.max(...datos.map(d => d._dil*100)) * 1.15))], dtick: 5 }
       }
     });
 
-    // Barras por zona
+    // ── BARRAS POR ZONA ──────────────────────────────────────
+    // Recalcular directamente desde datos para evitar problemas de campo
+    const zonaMap = {};
+    datos.forEach(d => {
+      const z = (d[CONFIG.CAMPOS.zona] || "Sin zona").trim() || "Sin zona";
+      if (!zonaMap[z]) zonaMap[z] = { sobre: 0, sub: 0, pvt: 0 };
+      zonaMap[z].sobre += parseFloat(d[CONFIG.CAMPOS.sobreexcavacion]) || 0;
+      zonaMap[z].sub   += parseFloat(d[CONFIG.CAMPOS.subexcavacion])   || 0;
+      zonaMap[z].pvt   += d._pvt;
+    });
+    const zonasArr = Object.entries(zonaMap)
+      .map(([z, v]) => ({
+        zona: z,
+        dil: v.pvt > 0 ? Math.min(100, +(v.sobre / v.pvt * 100).toFixed(1)) : 0,
+        rec: v.pvt > 0 ? Math.min(100, +((1 - v.sub / v.pvt) * 100).toFixed(1)) : 0
+      }))
+      .sort((a, b) => b.dil - a.dil);
+
     ChartManager.renderChartJS({
       type: "bar",
       data: {
-        labels: zonas.map(z => z.zona),
+        labels: zonasArr.map(z => z.zona),
         datasets: [
-          { label: "Dilución (%)",     data: zonas.map(z => +(z.dil*100).toFixed(1)), backgroundColor: "#E8401C" },
-          { label: "Recuperación (%)", data: zonas.map(z => +(z.rec*100).toFixed(1)), backgroundColor: "#2C1810" }
+          { label: "Dilución (%)",     data: zonasArr.map(z => z.dil), backgroundColor: "#E8401C" },
+          { label: "Recuperación (%)", data: zonasArr.map(z => z.rec), backgroundColor: "#2C1810" }
         ]
       },
-      options: { responsive: true, plugins: { title: { display: true, text: "Dilución y Recuperación por Zona (%)" } }, scales: { y: { beginAtZero: true, max: 100 } } }
+      options: {
+        responsive: true,
+        plugins: { title: { display: true, text: "Dilución y Recuperación por Zona (%)" } },
+        scales: { y: { beginAtZero: true, max: 100 } }
+      }
     });
 
-    // Barras por mina
+    // ── BARRAS POR MINA ──────────────────────────────────────
+    const minaMap = {};
+    datos.forEach(d => {
+      const mn = (d[CONFIG.CAMPOS.mina] || "Sin mina").trim() || "Sin mina";
+      if (!minaMap[mn]) minaMap[mn] = { sobre: 0, sub: 0, pvt: 0 };
+      minaMap[mn].sobre += parseFloat(d[CONFIG.CAMPOS.sobreexcavacion]) || 0;
+      minaMap[mn].sub   += parseFloat(d[CONFIG.CAMPOS.subexcavacion])   || 0;
+      minaMap[mn].pvt   += d._pvt;
+    });
+    const minasArr = Object.entries(minaMap)
+      .map(([mn, v]) => ({
+        mina: mn,
+        dil: v.pvt > 0 ? Math.min(100, +(v.sobre / v.pvt * 100).toFixed(1)) : 0,
+        rec: v.pvt > 0 ? Math.min(100, +((1 - v.sub / v.pvt) * 100).toFixed(1)) : 0
+      }));
+
     ChartManager.renderChartJS({
       type: "bar",
       data: {
-        labels: minas.map(mn => mn.mina),
+        labels: minasArr.map(mn => mn.mina),
         datasets: [
-          { label: "Dilución (%)",     data: minas.map(mn => +(mn.dil*100).toFixed(1)), backgroundColor: "#E8401C" },
-          { label: "Recuperación (%)", data: minas.map(mn => +(mn.rec*100).toFixed(1)), backgroundColor: "#2C1810" }
+          { label: "Dilución (%)",     data: minasArr.map(mn => mn.dil), backgroundColor: "#E8401C" },
+          { label: "Recuperación (%)", data: minasArr.map(mn => mn.rec), backgroundColor: "#2C1810" }
         ]
       },
-      options: { responsive: true, plugins: { title: { display: true, text: "Dilución y Recuperación por Mina (%)" } }, scales: { y: { beginAtZero: true, max: 100 } } }
+      options: {
+        responsive: true,
+        plugins: { title: { display: true, text: "Dilución y Recuperación por Mina (%)" } },
+        scales: { y: { beginAtZero: true, max: 100 } }
+      }
     });
   },
 
