@@ -364,10 +364,176 @@ ${ctx}`,
   },
 
   // ── EJECUTAR ACCIÓN RÁPIDA ────────────────────────────────
+
+  // ── RESUMEN EJECUTIVO — GRÁFICAS EN JS, TEXTO EN CLAUDE ──
+  async _ejecutarResumenLocal() {
+    if (!DataManager.datos || DataManager.datos.length === 0) {
+      UI.addMsg("⚠️ Carga primero un dataset CSV para usar esta acción.", "ai");
+      return;
+    }
+
+    UI.addMsg("📊 Resumen Ejecutivo", "user");
+    UI.registrarEntradaIndice("📊 Resumen Ejecutivo", "accion");
+    UI.setLoading(true);
+
+    // ── 1. Pedir texto + tablas + recomendaciones a Claude ──
+    const ctx = DataManager.buildContexto(this.contextoURL);
+    const promptTexto = `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones. No escribas texto fuera de las secciones marcadas. No generes ningún bloque CHART_JSON ni PLOTLY_JSON — las gráficas se generan automáticamente.
+
+## 📊 Resumen Ejecutivo
+**Dataset:** [N cámaras] | [minas presentes] | Período: [fecha_min] – [fecha_max]
+
+## Métricas Globales
+| Métrica | Valor | N cámaras |
+|---------|-------|-----------|
+| Dilución ponderada | X.X% | N |
+| Recuperación ponderada | X.X% | N |
+| Outliers dilución (>P75) | N | — |
+| Outliers recuperación (<P25) | N | — |
+
+## Por Zona (todas las zonas, ordenadas por PVt descendente)
+| Zona | Dil% | Rec% | Cámaras | PVt (t) | Estado |
+|------|------|------|---------|---------|--------|
+[una fila por zona — Estado: ✅ Normal / ⚠️ Atención / 🔴 Crítico]
+
+## Por Mina
+| Mina | Dil% | Rec% | Cámaras | PVt (t) | Estado |
+|------|------|------|---------|---------|--------|
+[una fila por mina — Estado: ✅ Normal / ⚠️ Atención / 🔴 Crítico]
+
+## ⚠️ Alertas Críticas
+[lista de máx. 5 cámaras: · ID [Mina/Zona] — Dil: X% | Rec: X%]
+[Si no hay alertas: · Sin alertas críticas en el dataset actual]
+
+## 💡 Recomendaciones
+1. [acción concreta con zona/cámara específica]
+2. [acción concreta con zona/cámara específica]
+3. [acción concreta si procede]
+
+SUGGESTIONS_START
+[3 sugerencias contextuales con zonas/cámaras reales]
+SUGGESTIONS_END
+
+Datos disponibles:
+${ctx}`;
+
+    try {
+      const response = await fetch(CONFIG.PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: CONFIG.MODEL,
+          max_tokens: CONFIG.MAX_TOKENS,
+          system: `Eres un experto en ingeniería minera de Sandfire MATSA. Responde SIEMPRE en español técnico. Sigue la plantilla al pie de la letra. NO generes bloques CHART_JSON ni PLOTLY_JSON.`,
+          messages: [{ role: "user", content: promptTexto }]
+        })
+      });
+
+      const data = await response.json();
+      const respuesta = data.content?.[0]?.text || "No se pudo obtener respuesta.";
+
+      // Extraer sugerencias
+      let sugerencias = [];
+      const sugMatch = respuesta.match(/SUGGESTIONS_START\s*([\s\S]*?)\s*SUGGESTIONS_END/);
+      if (sugMatch) { try { sugerencias = JSON.parse(sugMatch[1]); } catch(e) {} }
+
+      // Limpiar bloques técnicos
+      const textoLimpio = respuesta
+        .replace(/SUGGESTIONS_START[\s\S]*?SUGGESTIONS_END/g, "")
+        .trim();
+
+      // Mostrar texto de Claude
+      const tituloIndice = "📊 Resumen Ejecutivo";
+      UI.addMsg(textoLimpio, "ai", { titulo: tituloIndice, tipo: "accion" });
+
+      // ── 2. Gráficas generadas en JS con datos reales ──────
+      this._renderGraficasResumen();
+
+      if (sugerencias.length > 0) UI.mostrarSugerencias(sugerencias);
+
+      const entrada = this._guardarConsulta("Resumen Ejecutivo", textoLimpio);
+      UI.mostrarEtiquetaConsulta(entrada);
+
+    } catch (err) {
+      UI.addMsg("❌ Error de conexión: " + err.message, "ai");
+    } finally {
+      UI.setLoading(false);
+    }
+  },
+
+  // ── GRÁFICAS DEL RESUMEN — 100% JS, sin Claude ───────────
+  _renderGraficasResumen() {
+    const datos  = DataManager.datos;
+    const zonas  = DataManager.porZona();
+    const minas  = DataManager.porMina();
+    const m      = DataManager.metadatos;
+
+    // Scatter: una cámara = un punto
+    const maxPvt = Math.max(...datos.map(d => d._pvt), 1);
+    const colores = datos.map(d => {
+      const dilAlta = d._dil > m.dil_p75;
+      const recBaja = d._rec < m.rec_p25;
+      if (dilAlta && recBaja) return "#2C1810";
+      if (dilAlta) return "#E8401C";
+      if (recBaja) return "#F5A623";
+      return "#7a7a7a";
+    });
+    const tamaños = datos.map(d => Math.sqrt(d._pvt / maxPvt) * 13 + 5);
+
+    ChartManager.renderPlotly({
+      data: [{
+        type: "scatter",
+        mode: "markers",
+        x: datos.map(d => d._rec * 100),
+        y: datos.map(d => d._dil * 100),
+        text: datos.map(d => d[CONFIG.CAMPOS.id] + "<br>" + (d[CONFIG.CAMPOS.zona] || "") + " — Dil:" + (d._dil*100).toFixed(1) + "% Rec:" + (d._rec*100).toFixed(1) + "%"),
+        hoverinfo: "text",
+        marker: { color: colores, size: tamaños, opacity: 0.8, line: { width: 0.5, color: "#fff" } }
+      }],
+      layout: {
+        title: "Dispersión Dilución vs Recuperación (" + datos.length + " cámaras)",
+        xaxis: { title: "Recuperación (%)", range: [0, 105] },
+        yaxis: { title: "Dilución (%)", range: [0, Math.min(105, Math.max(...datos.map(d => d._dil*100)) * 1.1 + 5)] }
+      }
+    });
+
+    // Barras por zona
+    ChartManager.renderChartJS({
+      type: "bar",
+      data: {
+        labels: zonas.map(z => z.zona),
+        datasets: [
+          { label: "Dilución (%)",     data: zonas.map(z => +(z.dil*100).toFixed(1)), backgroundColor: "#E8401C" },
+          { label: "Recuperación (%)", data: zonas.map(z => +(z.rec*100).toFixed(1)), backgroundColor: "#2C1810" }
+        ]
+      },
+      options: { responsive: true, plugins: { title: { display: true, text: "Dilución y Recuperación por Zona (%)" } }, scales: { y: { beginAtZero: true, max: 100 } } }
+    });
+
+    // Barras por mina
+    ChartManager.renderChartJS({
+      type: "bar",
+      data: {
+        labels: minas.map(mn => mn.mina),
+        datasets: [
+          { label: "Dilución (%)",     data: minas.map(mn => +(mn.dil*100).toFixed(1)), backgroundColor: "#E8401C" },
+          { label: "Recuperación (%)", data: minas.map(mn => +(mn.rec*100).toFixed(1)), backgroundColor: "#2C1810" }
+        ]
+      },
+      options: { responsive: true, plugins: { title: { display: true, text: "Dilución y Recuperación por Mina (%)" } }, scales: { y: { beginAtZero: true, max: 100 } } }
+    });
+  },
+
   async ejecutarAccion(id) {
     // Caso especial: exportar PDF no llama a Claude
     if (id === "exportar") {
       if (typeof ExportManager !== "undefined") ExportManager.exportarPDF();
+      return;
+    }
+
+    // Caso especial: resumen — gráficas generadas en JS, solo texto+recomendaciones en Claude
+    if (id === "resumen") {
+      await this._ejecutarResumenLocal();
       return;
     }
 
