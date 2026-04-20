@@ -364,7 +364,9 @@ ${ctx}`,
       distribucion: "📉 Distribución Estadística",
       presentacion: "🖥️ Modo Presentación"
     };
-    UI.addMsg(labels[id] || id, "user");
+    const labelAccion = labels[id] || id;
+    UI.addMsg(labelAccion, "user");
+    UI.registrarEntradaIndice(labelAccion, "accion");
     UI.setLoading(true);
 
     try {
@@ -466,8 +468,9 @@ Contexto Power BI: ${this.contextoURL}`,
       .replace(/CLARIFY_START[\s\S]*?CLARIFY_END/g, "")
       .trim();
 
-    // Renderizar texto con markdown
-    ChartManager.procesarRespuesta(respuestaLimpia);
+    // Renderizar texto con markdown — registrar en índice
+    const tituloIndice = promptOriginal.length > 35 ? promptOriginal.substring(0, 32) + "…" : promptOriginal;
+    ChartManager.procesarRespuestaConIndice(respuestaLimpia, tituloIndice);
 
     // Renderizar gráfica Chart.js si existe
     const chartMatch = respuesta.match(/CHART_JSON_START\s*([\s\S]*?)\s*CHART_JSON_END/);
