@@ -132,6 +132,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
 }
 
 .msg {
@@ -468,36 +469,15 @@ body {
 /* ── LAYOUT PRINCIPAL ────────────────────────────────────── */
 #main-layout {
   display: flex;
+  flex-direction: row;
   flex: 1;
-  overflow: hidden;
   min-height: 0;
+  height: 0;
+  overflow: hidden;
 }
 
-/* ── BOTÓN TOGGLE ÍNDICE ─────────────────────────────────── */
-#indice-toggle-bar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 16px 4px;
-  background: white;
-  border-bottom: 1px solid #f0f0f0;
-  flex-shrink: 0;
-}
-#btn-indice-toggle {
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 20px;
-  padding: 4px 12px;
-  font-size: 11px;
-  cursor: pointer;
-  color: #2C1810;
-  font-weight: 500;
-  transition: all 0.2s;
-}
-#btn-indice-toggle:hover {
-  background: #E8401C;
-  color: white;
-  border-color: #E8401C;
-}
+
+/* btn-indice-toggle integrado en .btn-header del header */
 
 /* ── PANEL ÍNDICE LATERAL ────────────────────────────────── */
 #indice-panel {
