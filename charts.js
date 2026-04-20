@@ -9,6 +9,15 @@ const ChartManager = {
   // ── CHART.JS ──────────────────────────────────────────────
   renderChartJS(spec) {
     try {
+      // Normalizar tipos inválidos — Chart.js 4 no tiene "barh"
+      if (spec.type === "barh") {
+        spec.type = "bar";
+        if (!spec.options) spec.options = {};
+        spec.options.indexAxis = "y";
+      }
+      const tiposValidos = ["bar","line","pie","doughnut","scatter","bubble","radar","polarArea"];
+      if (!tiposValidos.includes(spec.type)) spec.type = "bar";
+
       const colors = CONFIG.COLORES.palette;
 
       if (spec.data && spec.data.datasets) {
