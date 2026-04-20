@@ -93,6 +93,7 @@ const App = {
     DataManager.cargarCSV(file, (metadatos) => {
       UI.actualizarEstado(metadatos);
       UI.mostrarBienvenida(metadatos);
+      UI.habilitarBotonera();
     });
     // Reset input para permitir cargar el mismo archivo de nuevo
     event.target.value = "";
