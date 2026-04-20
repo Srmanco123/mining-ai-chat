@@ -153,10 +153,16 @@ const ChartManager = {
   },
 
   // ── HELPER: PROCESAR RESPUESTA ────────────────────────────
-  // Recibe el texto limpio (sin bloques técnicos) y lo muestra
   procesarRespuesta(textoLimpio) {
     if (textoLimpio && textoLimpio.trim()) {
       UI.addMsg(textoLimpio, "ai");
+    }
+  },
+
+  // Con registro en índice lateral
+  procesarRespuestaConIndice(textoLimpio, titulo) {
+    if (textoLimpio && textoLimpio.trim()) {
+      UI.addMsg(textoLimpio, "ai", { titulo: titulo, tipo: "chat" });
     }
   },
 
