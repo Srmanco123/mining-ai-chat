@@ -5,10 +5,59 @@
 
 const UI = {
   modoPresentacion: false,
+  _indiceAbierto: false,
+  _indiceEntradas: [],
+  _entradaCounter: 0,
 
   init() {
     this._renderBotonera();
     this._renderInputArea();
+  },
+
+  // ── ÍNDICE LATERAL ────────────────────────────────────────
+  toggleIndice() {
+    this._indiceAbierto = !this._indiceAbierto;
+    const panel = document.getElementById("indice-panel");
+    const btn   = document.getElementById("btn-indice-toggle");
+    if (!panel) return;
+    if (this._indiceAbierto) {
+      panel.classList.remove("indice-cerrado");
+      panel.classList.add("indice-abierto");
+      if (btn) { btn.style.background = "#E8401C"; btn.style.color = "white"; }
+    } else {
+      panel.classList.add("indice-cerrado");
+      panel.classList.remove("indice-abierto");
+      if (btn) { btn.style.background = ""; btn.style.color = ""; }
+    }
+  },
+
+  registrarEntradaIndice(titulo, tipo) {
+    this._entradaCounter++;
+    const id = "entrada-" + this._entradaCounter;
+    const entrada = { id, titulo, tipo, timestamp: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) };
+    this._indiceEntradas.push(entrada);
+    this._actualizarIndice();
+    return id;
+  },
+
+  _actualizarIndice() {
+    const lista   = document.getElementById("indice-lista");
+    const contador = document.getElementById("indice-contador");
+    if (!lista) return;
+    if (contador) contador.textContent = this._indiceEntradas.length + " entrada" + (this._indiceEntradas.length !== 1 ? "s" : "");
+
+    const iconos = { accion: "📊", chat: "💬", grafica: "📈", alerta: "⚠️" };
+    lista.innerHTML = this._indiceEntradas.map(e => `
+      <div class="indice-item" onclick="UI._scrollAEntrada('${e.id}')" title="${e.titulo}">
+        <span class="indice-icono">${iconos[e.tipo] || "💬"}</span>
+        <span class="indice-texto">${e.titulo.substring(0, 28)}${e.titulo.length > 28 ? "…" : ""}</span>
+        <span class="indice-hora">${e.timestamp}</span>
+      </div>`).join("");
+  },
+
+  _scrollAEntrada(id) {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   },
 
   // ── BOTONERA ──────────────────────────────────────────────
@@ -109,7 +158,7 @@ const UI = {
   },
 
   // ── AGREGAR MENSAJE ───────────────────────────────────────
-  addMsg(texto, tipo) {
+  addMsg(texto, tipo, opcionesIndice = null) {
     const chat = document.getElementById("chat");
     const div = document.createElement("div");
     div.className = "msg " + tipo;
@@ -136,6 +185,11 @@ const UI = {
       div.innerText = texto;
     }
 
+    // Registrar en índice lateral si se indica
+    if (opcionesIndice && opcionesIndice.titulo) {
+      const idEntrada = this.registrarEntradaIndice(opcionesIndice.titulo, opcionesIndice.tipo || "chat");
+      div.id = idEntrada;
+    }
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
     return div;
