@@ -48,15 +48,14 @@ const ChartManager = {
         spec.options.plugins.title.display = true;
       }
 
+      const titulo = spec.options?.plugins?.title?.text || "Gráfica";
       const wrapper = this._crearWrapper();
       const canvas = document.createElement("canvas");
-      canvas.style.maxHeight = "240px";
       wrapper.appendChild(canvas);
-      document.getElementById("chat").appendChild(wrapper);
+      this._mostrarEnPanel(wrapper, titulo);
 
       const instancia = new Chart(canvas, spec);
       this.instancias.push(instancia);
-      this._scroll();
     } catch (e) {
       UI.addMsg("⚠️ No se pudo renderizar la gráfica Chart.js: " + e.message, "ai");
     }
@@ -82,13 +81,14 @@ const ChartManager = {
         });
       }
 
+      const titulo = spec.layout?.title || "Gráfica";
       const wrapper = this._crearWrapper();
       const div = document.createElement("div");
+      div.style.width = "100%";
       wrapper.appendChild(div);
-      document.getElementById("chat").appendChild(wrapper);
+      this._mostrarEnPanel(wrapper, titulo);
 
       Plotly.newPlot(div, spec.data, spec.layout, { responsive: true, displayModeBar: false });
-      this._scroll();
     } catch (e) {
       UI.addMsg("⚠️ No se pudo renderizar la gráfica Plotly: " + e.message, "ai");
     }
@@ -170,7 +170,27 @@ const ChartManager = {
   _crearWrapper() {
     const wrapper = document.createElement("div");
     wrapper.className = "chart-container";
+    wrapper.style.width = "100%";
     return wrapper;
+  },
+
+  _mostrarEnPanel(wrapper, titulo) {
+    const panel = document.getElementById("chart-panel");
+    const content = document.getElementById("chart-panel-content");
+    const tituloEl = document.getElementById("chart-panel-titulo");
+    if (!panel || !content) return;
+    // Limpiar gráfica anterior
+    content.innerHTML = "";
+    content.appendChild(wrapper);
+    if (tituloEl) tituloEl.textContent = titulo || "Visualización";
+    panel.classList.add("visible");
+    document.getElementById("main-layout").classList.add("con-grafica");
+  },
+
+  ocultarPanel() {
+    const panel = document.getElementById("chart-panel");
+    if (panel) panel.classList.remove("visible");
+    document.getElementById("main-layout")?.classList.remove("con-grafica");
   },
 
   _scroll() {
