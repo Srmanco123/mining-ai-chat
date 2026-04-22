@@ -261,15 +261,15 @@ body {
   color: #555;
 }
 
-/* ── CHART CONTAINER ─────────────────────────────────────── */
+/* ── CHART CONTAINER (dentro del panel gráfico) ──────────── */
 .chart-container {
   background: white;
-  border: 1px solid #e8e8e8;
-  border-radius: 10px;
+  border-radius: 0;
   padding: 16px;
-  margin: 4px 0;
-  max-width: 88%;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  margin: 0;
+  width: 100%;
+  box-shadow: none;
+  border: none;
 }
 
 /* ── CLARIFICACIÓN ───────────────────────────────────────── */
@@ -477,6 +477,52 @@ body {
   overflow: hidden;
 }
 
+/* ── PANEL GRÁFICO ───────────────────────────────────────── */
+#chart-panel {
+  display: none;
+  flex-direction: column;
+  flex: 0 0 60%;
+  min-height: 0;
+  border-left: 1px solid #e0e0e0;
+  background: #f9f9f9;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+#chart-panel.visible {
+  display: flex;
+}
+#main-layout.con-grafica #chat {
+  flex: 0 0 40%;
+  min-width: 0;
+}
+#chart-panel-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  background: #2C1810;
+  color: white;
+  flex-shrink: 0;
+  border-bottom: 2px solid #E8401C;
+  min-height: 38px;
+}
+#chart-panel-titulo {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+}
+#chart-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  min-height: 0;
+}
+#chart-panel-content::-webkit-scrollbar { width: 5px; }
+#chart-panel-content::-webkit-scrollbar-track { background: transparent; }
+#chart-panel-content::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
 
 /* btn-indice-toggle integrado en .btn-header del header */
 
