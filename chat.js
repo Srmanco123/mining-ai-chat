@@ -714,19 +714,26 @@ Contexto Power BI: ${this.contextoURL}`,
     const tituloIndice = promptOriginal.length > 35 ? promptOriginal.substring(0, 32) + "…" : promptOriginal;
     ChartManager.procesarRespuestaConIndice(respuestaLimpia, tituloIndice);
 
-    // Renderizar TODAS las gráficas Plotly (puede haber varias)
+    // Renderizar gráficas — si no hay ninguna, ocultar panel
     const plotlyMatches = [...respuesta.matchAll(/PLOTLY_JSON_START\s*([\s\S]*?)\s*PLOTLY_JSON_END/g)];
+    const chartMatches  = [...respuesta.matchAll(/CHART_JSON_START\s*([\s\S]*?)\s*CHART_JSON_END/g)];
+    const hayGrafica = plotlyMatches.length > 0 || chartMatches.length > 0;
+
+    if (!hayGrafica) {
+      ChartManager.ocultarPanel();
+    }
+
     plotlyMatches.forEach(m => {
       try { ChartManager.renderPlotly(JSON.parse(m[1])); } catch (e) {
         console.warn("Error parseando Plotly JSON:", e);
+        ChartManager.ocultarPanel();
       }
     });
 
-    // Renderizar TODAS las gráficas Chart.js (puede haber varias)
-    const chartMatches = [...respuesta.matchAll(/CHART_JSON_START\s*([\s\S]*?)\s*CHART_JSON_END/g)];
     chartMatches.forEach(m => {
       try { ChartManager.renderChartJS(JSON.parse(m[1])); } catch (e) {
         console.warn("Error parseando Chart.js JSON:", e);
+        ChartManager.ocultarPanel();
       }
     });
 
