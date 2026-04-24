@@ -1,10 +1,10 @@
 // ============================================================
 //  chat.js  —  Lógica de chat, historial, llamadas a Claude
-//  Versión 3.0 — Prompts plantillados + drill-downs + memoria
+//  Versión 3.1 — Contexto condicional + umbrales dinámicos + temperature=0
 // ============================================================
 
 const ChatManager = {
-  historial: [],         // últimas 6 interacciones (chat libre)
+  historial: [],         // últimas 10 interacciones (chat libre, antes 6)
   contextoURL: "",
   modoPresentacion: false,
 
@@ -40,7 +40,9 @@ const ChatManager = {
   },
 
   // ── SYSTEM PROMPT BASE (chat libre) ──────────────────────
-  buildSystemPrompt() {
+  // Acepta el prompt del usuario para que buildContexto() pueda
+  // decidir si incluir RAW data (solo si menciona una cámara).
+  buildSystemPrompt(promptUsuario = "") {
     return `Eres un experto en ingeniería minera especializado en reconciliación de cámaras subterráneas de Sandfire MATSA.
 Responde siempre en español técnico para ingenieros senior de minería.
 Sé conciso. Máximo 200 palabras de texto por respuesta. El detalle va en los drill-downs.
@@ -52,9 +54,10 @@ REGLAS DE CÁLCULO OBLIGATORIAS:
 - Indica siempre cuántas cámaras respaldan cada afirmación
 - Valores siempre entre 0% y 100%
 - Escribe siempre "dilución ponderada" y "recuperación ponderada", nunca "media" ni "promedio" a secas
+- Outliers: usa SIEMPRE los umbrales P25/P75 dinámicos del dataset que figuran en la sección UMBRALES DE ALERTA
 
 Contexto Power BI activo: ${this.contextoURL}
-${DataManager.buildContexto(this.contextoURL)}
+${DataManager.buildContexto(this.contextoURL, promptUsuario)}
 
 DETECCIÓN DE AMBIGÜEDAD:
 Si la petición es ambigua, devuelve SOLO:
@@ -91,7 +94,23 @@ SUGGESTIONS_END`;
   // Cada acción tiene su propio prompt con estructura fija.
   // Claude rellena los huecos pero NO puede cambiar la estructura.
   _promptAccion(id) {
-    const ctx = DataManager.buildContexto(this.contextoURL);
+    // Para las acciones rápidas NO hay prompt de usuario, así que el contexto
+    // nunca incluirá RAW data (lo cual es lo deseado — se usan solo stats).
+    const ctx = DataManager.buildContexto(this.contextoURL, "");
+
+    // Umbrales dinámicos para mostrar en la plantilla de alertas
+    const u = DataManager.umbralesDinamicos
+      ? DataManager.umbralesDinamicos()
+      : {
+          dilucion_alta:     CONFIG.ALERTAS?.dilucion_alta     || 0.30,
+          recuperacion_baja: CONFIG.ALERTAS?.recuperacion_baja || 0.80,
+          dilucion_media:    CONFIG.ALERTAS?.dilucion_media    || 0.20,
+          recuperacion_media:CONFIG.ALERTAS?.recuperacion_media|| 0.88
+        };
+    const UmbDilAlta  = (u.dilucion_alta      * 100).toFixed(1);
+    const UmbRecBaja  = (u.recuperacion_baja  * 100).toFixed(1);
+    const UmbDilMed   = (u.dilucion_media     * 100).toFixed(1);
+    const UmbRecMed   = (u.recuperacion_media * 100).toFixed(1);
 
     const plantillas = {
 
@@ -164,18 +183,18 @@ SUGGESTIONS_START
 SUGGESTIONS_END
 
 Datos disponibles:
-\${ctx}`,
+${ctx}`,
 
       // ── 2. ALERTAS AUTOMÁTICAS ──────────────────────────
       alertas: `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones.
 
 ## ⚠️ Alertas Automáticas — Dataset Actual
 
-## 🔴 Críticas (dilución > ${typeof CONFIG !== 'undefined' ? CONFIG.ALERTAS?.dilucion_alta * 100 || 25 : 25}% O recuperación < ${typeof CONFIG !== 'undefined' ? CONFIG.ALERTAS?.recuperacion_baja * 100 || 75 : 75}%)
+## 🔴 Críticas (dilución > ${UmbDilAlta}% O recuperación < ${UmbRecBaja}%)
 [tabla con columnas: ID cámara | Mina | Zona | Dil% | Rec% | Problema]
 [máx. 10 filas ordenadas por gravedad — si no hay, escribe: Sin alertas críticas]
 
-## 🟡 Intermedias (dilución 15-25% O recuperación 75-85%)
+## 🟡 Intermedias (dilución > ${UmbDilMed}% O recuperación < ${UmbRecMed}%)
 [tabla con columnas: ID cámara | Mina | Zona | Dil% | Rec% | Problema]
 [máx. 5 filas — si no hay, escribe: Sin alertas intermedias]
 
@@ -321,7 +340,7 @@ Datos disponibles:
 ${ctx}`,
 
       // ── 7. MODO PRESENTACIÓN ────────────────────────────
-      presentacion: `Genera un resumen ejecutivo ultra-compacto para proyectar en pantalla en una reunión de dirección. 
+      presentacion: `Genera un resumen ejecutivo ultra-compacto para proyectar en pantalla en una reunión de dirección.
 Responde EXACTAMENTE en este formato. Sin texto adicional.
 
 ## 🖥️ Vista Dirección — [fecha actual]
@@ -377,7 +396,7 @@ ${ctx}`,
     UI.setLoading(true);
 
     // ── 1. Pedir texto + tablas + recomendaciones a Claude ──
-    const ctx = DataManager.buildContexto(this.contextoURL);
+    const ctx = DataManager.buildContexto(this.contextoURL, "");
     const promptTexto = `Analiza el dataset y responde EXACTAMENTE en este formato. No añadas ni quites secciones. No escribas texto fuera de las secciones marcadas. No generes ningún bloque CHART_JSON ni PLOTLY_JSON — las gráficas se generan automáticamente.
 
 ## 📊 Resumen Ejecutivo
@@ -424,6 +443,7 @@ ${ctx}`;
         body: JSON.stringify({
           model: CONFIG.MODEL,
           max_tokens: CONFIG.MAX_TOKENS,
+          temperature: 0,
           system: `Eres un experto en ingeniería minera de Sandfire MATSA. Responde SIEMPRE en español técnico. Sigue la plantilla al pie de la letra. NO generes bloques CHART_JSON ni PLOTLY_JSON.`,
           messages: [{ role: "user", content: promptTexto }]
         })
@@ -501,7 +521,6 @@ ${ctx}`;
     });
 
     // ── BARRAS POR ZONA ──────────────────────────────────────
-    // Recalcular directamente desde datos para evitar problemas de campo
     const zonaMap = {};
     datos.forEach(d => {
       const z = (d[CONFIG.CAMPOS.zona] || "Sin zona").trim() || "Sin zona";
@@ -617,7 +636,8 @@ ${ctx}`;
         body: JSON.stringify({
           model: CONFIG.MODEL,
           max_tokens: CONFIG.MAX_TOKENS,
-          system: `Eres un experto en ingeniería minera de Sandfire MATSA. 
+          temperature: 0,
+          system: `Eres un experto en ingeniería minera de Sandfire MATSA.
 Responde SIEMPRE en español técnico.
 Sigue la plantilla proporcionada al pie de la letra — no añadas ni quites secciones.
 Rellena todos los valores con los datos reales calculados.
@@ -658,7 +678,10 @@ Contexto Power BI: ${this.contextoURL}`,
         body: JSON.stringify({
           model: CONFIG.MODEL,
           max_tokens: CONFIG.MAX_TOKENS,
-          system: this.buildSystemPrompt(),
+          temperature: 0,
+          // Pasamos el prompt original para que buildContexto() decida
+          // si incluir RAW data (solo si menciona un ID de cámara).
+          system: this.buildSystemPrompt(prompt),
           messages: [
             ...this.historial.map(h => ([
               { role: "user", content: h.p },
@@ -737,17 +760,15 @@ Contexto Power BI: ${this.contextoURL}`,
     const entrada = this._guardarConsulta(promptOriginal, respuestaLimpia);
     UI.mostrarEtiquetaConsulta(entrada);  // muestra el chip "💾 [nombre]" en el mensaje
 
-    // Historial para contexto (solo chat libre)
+    // Historial para contexto (solo chat libre) — hasta 10 interacciones (antes 6)
     this.historial.push({ p: promptOriginal, r: respuestaLimpia });
-    if (this.historial.length > 6) this.historial.shift();
+    if (this.historial.length > 10) this.historial.shift();
   },
 
   // ── MEMORIA DE CONSULTAS ──────────────────────────────────
   // Detecta patrones como "repite esto para zona X" o
   // "haz lo mismo pero para MGD" y construye el prompt expandido
   _procesarMemoriaConsulta(prompt) {
-    const lower = prompt.toLowerCase();
-
     // Patrones de referencia a consulta anterior
     const patronesRepetir = [
       /repite\s+(esto|eso|lo mismo|la consulta|el análisis)/i,
@@ -781,9 +802,10 @@ Aplica la misma lógica de análisis pero adaptada al nuevo contexto indicado en
     const esReferencia = patronesReferencia.some(p => p.test(prompt));
 
     if (esReferencia && this._ultimaConsulta) {
+      // Resumen ampliado de 500 → 1500 chars para no perder detalle
       return `Contexto de la consulta anterior:
 PREGUNTA: "${this._ultimaConsulta.prompt}"
-RESPUESTA RESUMIDA: "${this._ultimaConsulta.respuesta.substring(0, 500)}..."
+RESPUESTA RESUMIDA: "${this._ultimaConsulta.respuesta.substring(0, 1500)}..."
 
 NUEVA PETICIÓN: "${prompt}"`;
     }
