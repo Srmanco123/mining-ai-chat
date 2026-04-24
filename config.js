@@ -1,6 +1,6 @@
 // ============================================================
 //  config.js  —  Configuración global del sistema
-//  Versión 3.0 — ajusta aquí sin tocar otros archivos
+//  Versión 3.1 — alineado con Worker endurecido + outliers P25/P75
 // ============================================================
 
 const CONFIG = {
@@ -8,7 +8,7 @@ const CONFIG = {
   // ── API ───────────────────────────────────────────────────
   PROXY_URL:   "https://anthropic-proxy.manurv2.workers.dev",
   MODEL:       "claude-haiku-4-5-20251001",
-  MAX_TOKENS:  6000,
+  MAX_TOKENS:  4096,  // alineado con el límite del Worker (antes 6000 → recortaba silenciosamente)
 
   // ── EMPRESA ───────────────────────────────────────────────
   EMPRESA:       "Sandfire MATSA",
@@ -54,17 +54,23 @@ const CONFIG = {
     return Math.min(1, Math.max(0, 1 - sub / pvt));
   },
 
-  // ── UMBRALES DE ALERTA ────────────────────────────────────
-  // Ajusta aquí los umbrales operacionales sin tocar lógica
+  // ── UMBRALES DE ALERTA — SOLO FALLBACK ────────────────────
+  // IMPORTANTE: desde la versión 3.1 las alertas se calculan con
+  // percentiles DINÁMICOS P25/P75 del dataset cargado (coherente con
+  // Power BI). Estos valores sólo se usan si el dataset no tiene
+  // suficientes cámaras para calcular percentiles fiables (n < 4).
   ALERTAS: {
-    dilucion_alta:      0.30,   // > 30% → alerta roja
-    dilucion_media:     0.20,   // > 20% → alerta amarilla
-    recuperacion_baja:  0.80,   // < 80% → alerta roja
-    recuperacion_media: 0.88    // < 88% → alerta amarilla
+    dilucion_alta:      0.30,   // fallback: > 30%
+    dilucion_media:     0.20,   // fallback: > 20%
+    recuperacion_baja:  0.80,   // fallback: < 80%
+    recuperacion_media: 0.88    // fallback: < 88%
   },
 
-  // ── LÍMITE DE REGISTROS ENVIADOS A CLAUDE ─────────────────
-  // Aumentar si tienes datasets pequeños; reducir si hay lag
+  // ── DATOS EN BRUTO ENVIADOS A CLAUDE ─────────────────────
+  // Desde 3.1 los registros en bruto SÓLO se envían si el prompt
+  // menciona un ID de cámara específico (análisis individual).
+  // Para el resto de consultas se envían únicamente estadísticas
+  // agregadas — ahorra tokens y evita alucinaciones.
   MAX_REGISTROS_IA: 200,
 
   // ── ACCIONES RÁPIDAS DE LA BOTONERA ──────────────────────
